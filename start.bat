@@ -1,6 +1,6 @@
 @echo off
 echo ========================================
-  Shopee Growth Quest - Plataforma Central
+echo   Plataforma Central - Nutri Active
 echo ========================================
 echo.
 
