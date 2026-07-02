@@ -8,12 +8,12 @@
 
 | ID | Tarefa | Prioridade | Notas |
 |----|--------|------------|-------|
-| S-01 | Criar `backend/shopee_client.py` (HMAC + OAuth) | 🔴 Alta | Core da integração |
-| S-02 | Criar `backend/routers/shopee.py` | 🔴 Alta | Endpoints auth + proxy |
+| ~~S-01~~ | ~~Criar `backend/shopee_client.py` (HMAC + OAuth)~~ | ~~🔴 Alta~~ | ✅ Concluído |
+| S-02 | Criar `backend/routers/shopee.py` | 🔴 Alta | 🔄 Em progresso |
 | S-03 | Registrar router em `main.py` | 🔴 Alta | Depends S-02 |
 | ~~S-04~~ | ~~Atualizar `backend/.env.example`~~ | ~~🟡 Média~~ | ✅ Concluído |
 | ~~S-05~~ | ~~Criar `backend/.env` com credenciais sandbox~~ | ~~🔴 Alta~~ | ✅ Concluído |
-| S-06 | Adicionar `httpx` ao `requirements.txt` | 🟡 Média | Dependência HTTP |
+| ~~S-06~~ | ~~Adicionar `httpx` ao `requirements.txt`~~ | ~~🟡 Média~~ | ✅ Concluído |
 | S-07 | Migration: tabela `shopee_tokens` | 🟡 Média | Salvar tokens por loja |
 | S-08 | Atualizar `frontend/Configuracoes.tsx` | 🟡 Média | Botão "Conectar Shopee" |
 | S-09 | Testar handshake no sandbox | 🔴 Alta | Validar auth flow |
@@ -25,7 +25,7 @@
 
 | ID | Tarefa | Início | Responsável |
 |----|--------|--------|-------------|
-| — | — | — | — |
+| S-02 | Criar `backend/routers/shopee.py` | 2026-07-02 | Subagente |
 
 ---
 
@@ -33,8 +33,10 @@
 
 | ID | Tarefa | Concluído | Commit |
 |----|--------|-----------|--------|
+| S-01 | Criar `backend/shopee_client.py` | 2026-07-02 | — |
 | S-04 | Atualizar `backend/.env.example` | 2026-07-01 | — |
 | S-05 | Criar `backend/.env` com credenciais sandbox | 2026-07-01 | — |
+| S-06 | Adicionar `httpx` ao `requirements.txt` | 2026-07-02 | — |
 | S-10 | Criar `references/shopee-integration.md` | 2026-07-01 | — |
 
 ---

@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import products, finances, competitors, agents, tasks
+from routers import products, finances, competitors, agents, tasks, shopee
 
 app = FastAPI(
     title="Shopee Growth Quest API",
@@ -22,6 +22,7 @@ app.include_router(finances.router, prefix="/api/finances", tags=["finances"])
 app.include_router(competitors.router, prefix="/api/competitors", tags=["competitors"])
 app.include_router(agents.router, prefix="/api/agents", tags=["agents"])
 app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
+app.include_router(shopee.router)
 
 
 @app.get("/api/health")

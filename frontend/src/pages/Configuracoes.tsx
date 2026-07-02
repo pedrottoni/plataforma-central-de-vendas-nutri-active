@@ -1,8 +1,32 @@
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Database, Server, Brain, Key, Globe, Activity } from 'lucide-react'
 
 export function Configuracoes() {
+  const [shopeeStatus, setShopeeStatus] = useState<{ connected: boolean; shop_id: string | null; expires_at: string | null } | null>(null)
+
+  useEffect(() => {
+    fetch('/api/shopee/status')
+      .then(r => r.json())
+      .then(setShopeeStatus)
+      .catch(() => setShopeeStatus({ connected: false, shop_id: null, expires_at: null }))
+  }, [])
+
+  const handleConnect = async () => {
+    const res = await fetch('/api/shopee/auth/url')
+    const data = await res.json()
+    window.open(data.url, '_blank')
+  }
+
+  const handleRefresh = async () => {
+    await fetch('/api/shopee/refresh', { method: 'POST' })
+    const res = await fetch('/api/shopee/status')
+    const data = await res.json()
+    setShopeeStatus(data)
+  }
+
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'não configurado'
   const apiUrl = import.meta.env.VITE_API_URL || 'não configurado'
   const supabaseConfigured = supabaseUrl !== 'não configurado' && supabaseUrl.length > 0
@@ -238,6 +262,49 @@ export function Configuracoes() {
           <p className="text-xs text-muted-foreground mt-3 text-center">
             Chaves são lidas de <code className="text-primary">.env</code> no build time. Nunca são expostas ao cliente.
           </p>
+        </CardContent>
+      </Card>
+
+      {/* Shopee Connection */}
+      <Card className="bg-card">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Globe className="w-5 h-5 text-orange-500" />
+            Shopee Open Platform
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {shopeeStatus?.connected ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Badge variant="default">Conectado</Badge>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm">
+                  <span className="text-muted-foreground">Loja: </span>
+                  {shopeeStatus.shop_id}
+                </p>
+                {shopeeStatus.expires_at && (
+                  <p className="text-sm">
+                    <span className="text-muted-foreground">Expira em: </span>
+                    {shopeeStatus.expires_at}
+                  </p>
+                )}
+              </div>
+              <Button onClick={handleRefresh} variant="outline" size="sm">
+                Atualizar Token
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <Badge variant="secondary">Desconectado</Badge>
+              <div>
+                <Button onClick={handleConnect} size="sm">
+                  Conectar Shopee
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
