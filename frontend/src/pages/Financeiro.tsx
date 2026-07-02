@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { DatePicker } from '@/components/ui/date-picker'
 import { useUser, useTransactions, useProducts, useProductVariations, useRegisterSale, useDeleteSale, useKitCompositions, useBatchDeleteSales, useBatchUpdateSaleField, useBatchUpdateSaleQuantity, useUpdateSaleField, extractPots } from '@/hooks/use-data'
-import { TrendingUp, TrendingDown, DollarSign, Upload, ArrowUpRight, ArrowDownRight, Plus, ChevronUp, ChevronDown, AlertTriangle, Trash2, Check, Minus, Pencil, X } from 'lucide-react'
+import { TrendingUp, Upload, ArrowUpRight, ArrowDownRight, Plus, ChevronUp, ChevronDown, AlertTriangle, Trash2, Check, Minus, Pencil, X } from 'lucide-react'
 import { CustomSelect } from '@/components/ui/custom-select'
 
 export function Financeiro() {
@@ -191,11 +191,10 @@ export function Financeiro() {
     if (validItems.length === 0) return
     try {
       for (const item of validItems) {
-        const product = products.find(p => p.id === item.productId)
         const isKit = kitCompositions.some(kc => kc.kit_product_id === item.productId)
         await registerSale.mutateAsync({
-          productId: item.productId,
-          variationId: isKit ? null : (item.variationId as number),
+          productId: Number(item.productId),
+          variationId: isKit ? null : (item.variationId ? Number(item.variationId) : null),
           amount: parseFloat(item.amount),
           quantity: parseInt(item.quantity),
           date: saleDate,
@@ -235,7 +234,7 @@ export function Financeiro() {
         // Update transaction
         await supabase.from('transactions').update({
           product_id: item.productId,
-          variation_id: isKit ? null : (item.variation_id || null),
+          variation_id: isKit ? null : (item.variationId || null),
           amount: newAmount,
           quantity: newQty,
           date: saleDate,
@@ -255,11 +254,10 @@ export function Financeiro() {
       if (validItems.length > editingOrderIds.length) {
         for (let i = editingOrderIds.length; i < validItems.length; i++) {
           const item = validItems[i]
-          const product = products.find(p => p.id === item.productId)
           const isKit = kitCompositions.some(kc => kc.kit_product_id === item.productId)
           await registerSale.mutateAsync({
-            productId: item.productId,
-            variationId: isKit ? null : (item.variationId as number),
+            productId: Number(item.productId),
+            variationId: isKit ? null : (item.variationId ? Number(item.variationId) : null),
             amount: parseFloat(item.amount),
             quantity: parseInt(item.quantity),
             date: saleDate,

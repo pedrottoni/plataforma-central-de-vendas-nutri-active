@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Database, Server, Brain, Shield, Key, Globe, Activity, Zap } from 'lucide-react'
+import { Database, Server, Brain, Key, Globe, Activity } from 'lucide-react'
 
 export function Configuracoes() {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'não configurado'

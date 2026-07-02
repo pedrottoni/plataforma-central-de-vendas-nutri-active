@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Badge } from '@/components/ui/badge'
 import { useUser, useProducts, useProductVariations, useKitCompositions, useTransactions } from '@/hooks/use-data'
 import { supabase } from '@/lib/supabase'
-import { Package, BarChart3, DollarSign, AlertTriangle, ArrowUpDown, ChevronDown, ChevronUp, ChevronRight, Plus, Minus, TrendingUp, Percent, Receipt } from 'lucide-react'
+import { Package, BarChart3, DollarSign, ArrowUpDown, ChevronDown, ChevronUp, ChevronRight, Plus, Minus, TrendingUp, Percent, Receipt } from 'lucide-react'
 
 type ProductSortKey = 'name' | 'ads' | 'sold' | 'revenue'
 type StockSortKey = 'name' | 'stock' | 'cost' | 'invested'
@@ -134,7 +134,6 @@ export function Anuncios() {
     }
     return cogs
   }, [transactions, kitCompositions, products, variations])
-  const lowStockCount = stockProducts.filter(p => p.stock <= 5).length
   const totalSold = products.reduce((s, p) => s + p.sold_count, 0)
   const totalRevenue = products.reduce((s, p) => s + p.sold_count * p.price, 0)
   const avgTicket = totalSold > 0 ? totalRevenue / totalSold : 0

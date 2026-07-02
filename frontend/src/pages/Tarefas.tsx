@@ -4,7 +4,7 @@ import { KpiCard } from '@/components/kpi-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useUser, useTasks, useCompleteTask, useCreateTask, useDeleteTask } from '@/hooks/use-data'
-import { CheckCircle2, Circle, Clock, Filter, Plus, Trash2, X } from 'lucide-react'
+import { CheckCircle2, Circle, Filter, Plus, Trash2, X } from 'lucide-react'
 
 export function Tarefas() {
   const { data: user } = useUser()

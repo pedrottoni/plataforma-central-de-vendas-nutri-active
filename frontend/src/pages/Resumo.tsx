@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { KpiCard } from '@/components/kpi-card'
 import { Badge } from '@/components/ui/badge'
 import { useUser, useTasks, useProducts, useTransactions, useLowStockItems } from '@/hooks/use-data'
-import { TrendingUp, TrendingDown, Package, DollarSign, ShoppingCart, AlertTriangle } from 'lucide-react'
+import { TrendingUp, Package, DollarSign, ShoppingCart, AlertTriangle } from 'lucide-react'
 
 export function Resumo() {
   const { data: user } = useUser()
@@ -12,7 +12,6 @@ export function Resumo() {
   const { data: lowStock = [] } = useLowStockItems(user?.id)
 
   const pendingTasks = tasks.filter(t => !t.is_completed)
-  const completedTasks = tasks.filter(t => t.is_completed)
   const totalRevenue = transactions
     .filter(t => t.type === 'INCOME')
     .reduce((sum, t) => sum + t.amount, 0)
