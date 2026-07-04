@@ -318,10 +318,30 @@ export function useRegisterSale() {
             .from('products')
             .update({
               stock: compProduct.stock - potsToDeduct,
-              sold_count: (compProduct.sold_count || 0) + quantity,
             })
             .eq('id', comp.component_product_id)
           if (upErr) throw upErr
+        }
+
+        // Increment sold_count on the KIT product itself (not components)
+        const { error: kitUpErr } = await supabase
+          .from('products')
+          .update({
+            sold_count: (product.sold_count || 0) + quantity,
+          })
+          .eq('id', productId)
+        if (kitUpErr) throw kitUpErr
+
+        // Also update kit variation sold_count
+        if (variationId) {
+          const { data: kitVar } = await supabase.from('productvariations').select('sold_count').eq('id', variationId).single()
+          const { error: kitVarErr } = await supabase
+            .from('productvariations')
+            .update({
+              sold_count: ((kitVar?.sold_count) || 0) + quantity,
+            })
+            .eq('id', variationId)
+          if (kitVarErr) throw kitVarErr
         }
 
         // Create INCOME transaction for KIT
@@ -439,10 +459,29 @@ export function useDeleteSale() {
               .from('products')
               .update({
                 stock: compProduct.stock + potsToRestore,
-                sold_count: Math.max(0, (compProduct.sold_count || 0) - transaction.quantity),
               })
               .eq('id', comp.component_product_id)
             if (upErr) throw upErr
+          }
+
+          // Restore sold_count on the KIT product itself (not components)
+          const { data: kitProduct } = await supabase.from('products').select('sold_count').eq('id', transaction.product_id).single()
+          await supabase
+            .from('products')
+            .update({
+              sold_count: Math.max(0, (kitProduct?.sold_count || 0) - transaction.quantity),
+            })
+            .eq('id', transaction.product_id)
+
+          // Also restore kit variation sold_count
+          if (transaction.variation_id) {
+            const { data: kitVar } = await supabase.from('productvariations').select('sold_count').eq('id', transaction.variation_id).single()
+            await supabase
+              .from('productvariations')
+              .update({
+                sold_count: Math.max(0, (kitVar?.sold_count || 0) - transaction.quantity),
+              })
+              .eq('id', transaction.variation_id)
           }
 
           const { error: delErr } = await supabase
@@ -583,10 +622,28 @@ export function useBatchUpdateSaleQuantity() {
                 .from('products')
                 .update({
                   stock: compProduct.stock + oldPots - newPots,
-                  sold_count: Math.max(0, (compProduct.sold_count || 0) - tx.quantity + newQty),
                 })
                 .eq('id', comp.component_product_id)
             }
+          }
+
+          // Adjust sold_count on the KIT product itself (not components)
+          await supabase
+            .from('products')
+            .update({
+              sold_count: Math.max(0, (product.sold_count || 0) - tx.quantity + newQty),
+            })
+            .eq('id', tx.product_id)
+
+          // Also adjust kit variation sold_count
+          if (tx.variation_id) {
+            const { data: kitVar } = await supabase.from('productvariations').select('sold_count').eq('id', tx.variation_id).single()
+            await supabase
+              .from('productvariations')
+              .update({
+                sold_count: Math.max(0, (kitVar?.sold_count || 0) - tx.quantity + newQty),
+              })
+              .eq('id', tx.variation_id)
           }
         } else if (tx.variation_id) {
           // Normal: restore old pots to product, deduct new pots
@@ -657,9 +714,28 @@ export function useBatchDeleteSales() {
                 .from('products')
                 .update({
                   stock: compProduct.stock + potsToRestore,
-                  sold_count: Math.max(0, (compProduct.sold_count || 0) - tx.quantity),
                 })
                 .eq('id', comp.component_product_id)
+            }
+
+            // Restore sold_count on the KIT product itself (not components)
+            const { data: kitProduct } = await supabase.from('products').select('sold_count').eq('id', tx.product_id).single()
+            await supabase
+              .from('products')
+              .update({
+                sold_count: Math.max(0, (kitProduct?.sold_count || 0) - tx.quantity),
+              })
+              .eq('id', tx.product_id)
+
+            // Also restore kit variation sold_count
+            if (tx.variation_id) {
+              const { data: kitVar } = await supabase.from('productvariations').select('sold_count').eq('id', tx.variation_id).single()
+              await supabase
+                .from('productvariations')
+                .update({
+                  sold_count: Math.max(0, (kitVar?.sold_count || 0) - tx.quantity),
+                })
+                .eq('id', tx.variation_id)
             }
           }
         } else if (tx.variation_id && tx.product_id) {
