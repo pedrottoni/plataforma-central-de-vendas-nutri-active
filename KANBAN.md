@@ -1,6 +1,6 @@
-# KANBAN — Plataforma Central × Shopee Open Platform
+# KANBAN — Plataforma Central
 
-> Última atualização: 2026-07-01
+> Última atualização: 2026-07-02
 
 ---
 
@@ -8,16 +8,12 @@
 
 | ID | Tarefa | Prioridade | Notas |
 |----|--------|------------|-------|
-| ~~S-01~~ | ~~Criar `backend/shopee_client.py` (HMAC + OAuth)~~ | ~~🔴 Alta~~ | ✅ Concluído |
-| ~~S-02~~ | ~~Criar `backend/routers/shopee.py`~~ | ~~🔴 Alta~~ | ✅ Concluído |
-| ~~S-03~~ | ~~Registrar router em `main.py`~~ | ~~🔴 Alta~~ | ✅ Concluído |
-| ~~S-04~~ | ~~Atualizar `backend/.env.example`~~ | ~~🟡 Média~~ | ✅ Concluído |
-| ~~S-05~~ | ~~Criar `backend/.env` com credenciais sandbox~~ | ~~🔴 Alta~~ | ✅ Concluído |
-| ~~S-06~~ | ~~Adicionar `httpx` ao `requirements.txt`~~ | ~~🟡 Média~~ | ✅ Concluído |
-| ~~S-07~~ | ~~Migration: tabela `shopee_tokens`~~ | ~~🟡 Média~~ | ✅ Concluído |
-| ~~S-08~~ | ~~Atualizar `frontend/Configuracoes.tsx`~~ | ~~🟡 Média~~ | ✅ Concluído |
-| S-09 | Testar handshake no sandbox | 🔴 Alta | Validar auth flow |
-| ~~S-10~~ | ~~Criar `references/shopee-integration.md`~~ | ~~🟡 Média~~ | ✅ Concluído |
+| B-01 | Integrar upload CSV de pedidos Shopee | 🔴 Alta | Importar dados de vendas manualmente |
+| B-02 | Dashboard financeiro com dados reais | 🔴 Alta | KPIs baseados em transações |
+| B-03 | Controle de estoque | 🟡 Média | Alertas de estoque baixo |
+| B-04 | Tarefas com filtros e prioridades | 🟡 Média | Kanban board |
+| B-05 | Gráficos de vendas por período | 🟡 Média | Recharts |
+| B-06 | IA/LLM para análise | 🟢 Baixa | Futuro |
 
 ---
 
@@ -31,17 +27,18 @@
 
 ## ✅ CONCLUÍDO
 
-| ID | Tarefa | Concluído | Commit |
-|----|--------|-----------|--------|
-| S-01 | Criar `backend/shopee_client.py` | 2026-07-02 | — |
-| S-02 | Criar `backend/routers/shopee.py` | 2026-07-02 | — |
-| S-03 | Registrar router em `main.py` | 2026-07-02 | — |
-| S-04 | Atualizar `backend/.env.example` | 2026-07-01 | — |
-| S-05 | Criar `backend/.env` com credenciais sandbox | 2026-07-01 | — |
-| S-06 | Adicionar `httpx` ao `requirements.txt` | 2026-07-02 | — |
-| S-07 | Migration: tabela `shopee_tokens` | 2026-07-02 | — |
-| S-08 | Atualizar `frontend/Configuracoes.tsx` | 2026-07-02 | — |
-| S-10 | Criar `references/shopee-integration.md` | 2026-07-01 | — |
+| ID | Tarefa | Concluído |
+|----|--------|-----------|
+| Setup | Frontend React + Vite + shadcn/ui | 2026-07-01 |
+| Setup | Backend FastAPI (stubs) | 2026-07-01 |
+| Setup | Supabase schema (10 tabelas) | 2026-07-01 |
+| Setup | RLS policies | 2026-07-01 |
+| P-01 | Página Resumo com KPIs | 2026-07-01 |
+| P-02 | Página Meus Anúncios | 2026-07-01 |
+| P-03 | Página Financeiro | 2026-07-01 |
+| P-04 | Página Tarefas | 2026-07-01 |
+| P-05 | Página Configurações | 2026-07-01 |
+| Deploy | Vercel (frontend) | 2026-07-01 |
 
 ---
 
@@ -50,13 +47,3 @@
 - **Prioridade 🔴 Alta**: Bloqueia outras tarefas ou é pré-requisito
 - **Prioridade 🟡 Média**: Importante mas não bloqueia
 - **Prioridade 🟢 Baixa**: Nice-to-have, pode esperar
-
----
-
-## 🔄 Ordem de Execução Recomendada
-
-```
-S-10 (docs) → S-05 (.env) → S-04 (.env.example) → S-06 (httpx)
-    → S-01 (client) → S-02 (router) → S-03 (main.py)
-    → S-07 (migration) → S-08 (frontend) → S-09 (teste sandbox)
-```

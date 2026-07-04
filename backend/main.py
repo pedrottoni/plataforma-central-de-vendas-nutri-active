@@ -1,11 +1,14 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import products, finances, competitors, agents, tasks, shopee
+from routers import products, finances, competitors, agents, tasks
 
 app = FastAPI(
-    title="Shopee Growth Quest API",
-    description="Backend API for the Shopee dashboard platform",
+    title="Nutri Active API",
+    description="Backend API for the Nutri Active dashboard platform",
     version="0.1.0",
 )
 
@@ -22,7 +25,6 @@ app.include_router(finances.router, prefix="/api/finances", tags=["finances"])
 app.include_router(competitors.router, prefix="/api/competitors", tags=["competitors"])
 app.include_router(agents.router, prefix="/api/agents", tags=["agents"])
 app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
-app.include_router(shopee.router)
 
 
 @app.get("/api/health")

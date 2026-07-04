@@ -1,13 +1,11 @@
-# Plataforma Central — Shopee Growth Quest
+# Plataforma Central — Nutri Active
 
-React + Vite + TypeScript dashboard for a Shopee health/supplements store. Monolithic frontend with page-per-tab architecture.
+React + Vite + TypeScript dashboard for a health/supplements store. Monolithic frontend with page-per-tab architecture.
 
 **Stack:** React 19 + Vite + TypeScript + shadcn/ui + React Router + TanStack Query + Supabase + Recharts
 **Backend:** FastAPI (Python) — stub routers, AI/scraper logic to be implemented later
 
 ## Quick Nav
-
-> **Mapa completo com wikilinks**: Ver nota do Obsidian `Plataforma Central` em `C:\Proiectum\Vacuum\Notae\Plataforma Central.md`
 
 | Precisa de... | Ir para... |
 |--------|-------------|
@@ -20,7 +18,6 @@ React + Vite + TypeScript dashboard for a Shopee health/supplements store. Monol
 | Marketing | `frontend/src/pages/Marketing.tsx` — stub |
 | Atendimento | `frontend/src/pages/Atendimento.tsx` — stub |
 | Concorrência | `frontend/src/pages/Concorrencia.tsx` — stub |
-| **Shopee Integração** | `references/shopee-integration.md` — riscos, guidelines, endpoints |
 | **Task Tracking** | `KANBAN.md` — status das tarefas |
 
 ## Directory Map
@@ -35,10 +32,8 @@ React + Vite + TypeScript dashboard for a Shopee health/supplements store. Monol
 | `frontend/components.json` | shadcn/ui config — `new-york` style, `lucide` icons |
 | `backend/main.py` | FastAPI app with CORS, 5 routers, health check |
 | `backend/routers/` | Stub routers: products, finances, competitors, agents, tasks — all return `{"status": "em breve"}` |
-| `backend/.env` | Credenciais Shopee (NUNCA commitar — já no .gitignore) |
+| `backend/.env` | Credenciais (NUNCA commitar — já no .gitignore) |
 | `supabase/migrations/` | SQL schema (9 tables converted from SQLModel) |
-| `references/shopee-integration.md` | Riscos, guidelines, endpoints da API Shopee |
-| `KANBAN.md` | Task tracking do projeto |
 
 ## Run
 
