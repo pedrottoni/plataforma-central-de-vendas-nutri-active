@@ -37,7 +37,7 @@ export function Anuncios() {
   // Stock tab state
   const [stockSort, setStockSort] = useState<StockSortKey>('name')
   const [stockAsc, setStockAsc] = useState(true)
-  const [stockModal, setStockModal] = useState<{ productId: number; productName: string } | null>(null)
+  const [stockModal, setStockModal] = useState<{ productId: number; productName: string; mode: 'add' | 'remove' } | null>(null)
   const [newStockValue, setNewStockValue] = useState('')
 
   const variationsByProduct = useMemo(() => {
@@ -49,6 +49,17 @@ export function Anuncios() {
     }
     return map
   }, [variations])
+
+  // Receita real por produto, somada das transações INCOME (fonte da verdade).
+  // Necessário porque kit products têm price=0 no banco — sold_count × price seria sempre 0.
+  const revenueByProduct = useMemo(() => {
+    const map = new Map<number, number>()
+    for (const t of transactions) {
+      if (t.type !== 'INCOME' || t.product_id == null) continue
+      map.set(t.product_id, (map.get(t.product_id) ?? 0) + t.amount)
+    }
+    return map
+  }, [transactions])
 
   const toggleExpand = (productId: number) => {
     setExpandedProducts(prev => {
@@ -70,12 +81,12 @@ export function Anuncios() {
       })
       case 'sold': return arr.sort((a, b) => productAsc ? a.sold_count - b.sold_count : b.sold_count - a.sold_count)
       case 'revenue': return arr.sort((a, b) => {
-        const ar = a.sold_count * (variationsByProduct.get(a.id)?.[0]?.discount_price ?? a.price)
-        const br = b.sold_count * (variationsByProduct.get(b.id)?.[0]?.discount_price ?? b.price)
+        const ar = revenueByProduct.get(a.id) ?? 0
+        const br = revenueByProduct.get(b.id) ?? 0
         return productAsc ? ar - br : br - ar
       })
     }
-  }, [products, productSort, productAsc, variationsByProduct])
+  }, [products, productSort, productAsc, variationsByProduct, revenueByProduct])
 
   const toggleProductSort = (key: ProductSortKey) => {
     if (productSort === key) setProductAsc(prev => !prev)
@@ -134,8 +145,12 @@ export function Anuncios() {
     }
     return cogs
   }, [transactions, kitCompositions, products, variations])
+
   const totalSold = products.reduce((s, p) => s + p.sold_count, 0)
-  const totalRevenue = products.reduce((s, p) => s + p.sold_count * p.price, 0)
+  const totalRevenue = useMemo(
+    () => transactions.filter(t => t.type === 'INCOME').reduce((s, t) => s + t.amount, 0),
+    [transactions]
+  )
   const avgTicket = totalSold > 0 ? totalRevenue / totalSold : 0
   const margin = totalRevenue > 0 ? ((totalRevenue - totalInvested) / totalRevenue) * 100 : 0
   const roi = totalInvested > 0 ? ((totalRevenue - totalInvested) / totalInvested) * 100 : 0
@@ -197,9 +212,7 @@ export function Anuncios() {
                   {sortedProducts.map(p => {
                     const isExpanded = expandedProducts.has(p.id)
                     const pvars = variationsByProduct.get(p.id) ?? []
-                    const baseVar = pvars[0]
-                    const displayPrice = baseVar?.discount_price ?? p.price
-                    const revenue = p.sold_count * displayPrice
+                    const revenue = revenueByProduct.get(p.id) ?? 0
                     return (
                       <React.Fragment key={p.id}>
                         <div
@@ -325,7 +338,7 @@ export function Anuncios() {
                       </div>
                       <div className="flex items-center gap-1.5 py-2.5">
                         <button
-                          onClick={() => { setNewStockValue(''); setStockModal({ productId: p.id, productName: p.title }) }}
+                          onClick={() => { setNewStockValue(''); setStockModal({ productId: p.id, productName: p.title, mode: 'remove' }) }}
                           disabled={p.stock <= 0}
                           className="h-6 w-6 rounded-md bg-secondary hover:bg-secondary/80 flex items-center justify-center disabled:opacity-30 transition-colors"
                         >
@@ -333,7 +346,7 @@ export function Anuncios() {
                         </button>
                         <span className={`font-mono-nums w-6 text-center font-bold ${p.stock <= 0 ? 'text-destructive' : p.stock <= 5 ? 'text-destructive' : p.stock <= 15 ? 'text-warning' : 'text-success'}`}>{p.stock}</span>
                         <button
-                          onClick={() => updateStock(p.id, 1)}
+                          onClick={() => { setNewStockValue(''); setStockModal({ productId: p.id, productName: p.title, mode: 'add' }) }}
                           className="h-6 w-6 rounded-md bg-secondary hover:bg-secondary/80 flex items-center justify-center transition-colors"
                         >
                           <Plus className="h-3 w-3" />
@@ -419,11 +432,11 @@ export function Anuncios() {
         </TabsContent>
       </Tabs>
 
-      {/* Modal: Motivo da remoção */}
+      {/* Modal: Adicionar / Remover estoque */}
       <Dialog open={!!stockModal} onOpenChange={(open) => { if (!open) setStockModal(null) }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Remover item do estoque</DialogTitle>
+            <DialogTitle>{stockModal?.mode === 'add' ? 'Adicionar ao estoque' : 'Remover do estoque'}</DialogTitle>
             <p className="text-sm text-muted-foreground mt-1">
               {stockModal?.productName}
             </p>
@@ -432,7 +445,10 @@ export function Anuncios() {
             const modalProduct = stockModal ? products.find(p => p.id === stockModal.productId) : null
             const currentStock = modalProduct?.stock ?? 0
             const newStockNum = parseInt(newStockValue) || 0
-            const isInvalid = newStockNum >= currentStock || newStockNum < 0
+            const isAdd = stockModal?.mode === 'add'
+            const isInvalid = isAdd
+              ? newStockNum <= currentStock || newStockNum < 0
+              : newStockNum >= currentStock || newStockNum < 0
             return (
               <div className="space-y-3 pt-2">
                 <div className="space-y-1.5">
@@ -454,7 +470,10 @@ export function Anuncios() {
                 </div>
                 {isInvalid && newStockValue !== '' && (
                   <p className="text-[11px] text-destructive">
-                    O novo estoque deve ser menor que o estoque atual ({currentStock}).
+                    {isAdd
+                      ? `O novo estoque deve ser maior que o estoque atual (${currentStock}).`
+                      : `O novo estoque deve ser menor que o estoque atual (${currentStock}).`
+                    }
                   </p>
                 )}
                 <div className="space-y-2">
@@ -470,24 +489,31 @@ export function Anuncios() {
                     disabled={isInvalid || newStockValue === ''}
                     className="w-full text-left p-3 rounded-lg border border-border hover:bg-secondary/50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    <p className="text-sm font-medium">Venda</p>
-                    <p className="text-xs text-muted-foreground">Estoque diminui · Investido mantido</p>
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (stockModal && !isInvalid) {
-                        const delta = newStockNum - currentStock
-                        updateStock(stockModal.productId, delta, true)
-                        setStockModal(null)
-                        setNewStockValue('')
+                    <p className="text-sm font-medium">{isAdd ? 'Confirmar entrada' : 'Venda'}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {isAdd
+                        ? `+${newStockNum - currentStock} potes · estoque fica ${newStockNum}`
+                        : `Estoque diminui · Investido mantido`
                       }
-                    }}
-                    disabled={isInvalid || newStockValue === ''}
-                    className="w-full text-left p-3 rounded-lg border border-border hover:bg-secondary/50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <p className="text-sm font-medium">Remoção</p>
-                    <p className="text-xs text-muted-foreground">Estoque diminui · Investido também diminui</p>
+                    </p>
                   </button>
+                  {!isAdd && (
+                    <button
+                      onClick={() => {
+                        if (stockModal && !isInvalid) {
+                          const delta = newStockNum - currentStock
+                          updateStock(stockModal.productId, delta, true)
+                          setStockModal(null)
+                          setNewStockValue('')
+                        }
+                      }}
+                      disabled={isInvalid || newStockValue === ''}
+                      className="w-full text-left p-3 rounded-lg border border-border hover:bg-secondary/50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <p className="text-sm font-medium">Remoção</p>
+                      <p className="text-xs text-muted-foreground">Estoque diminui · Investido também diminui</p>
+                    </button>
+                  )}
                 </div>
               </div>
             )
