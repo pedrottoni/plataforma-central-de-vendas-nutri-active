@@ -28,3 +28,9 @@ dist/
 build/
 .venv/
 venv/
+
+# Hermes
+.hermes/desktop-attachments/
+
+# Data dumps (contém dados de produção — não commitar)
+*.sql
