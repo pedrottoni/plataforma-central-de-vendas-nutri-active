@@ -191,10 +191,9 @@ export function Financeiro() {
     if (validItems.length === 0) return
     try {
       for (const item of validItems) {
-        const isKit = kitCompositions.some(kc => kc.kit_product_id === item.productId)
         await registerSale.mutateAsync({
           productId: Number(item.productId),
-          variationId: isKit ? null : (item.variationId ? Number(item.variationId) : null),
+          variationId: item.variationId ? Number(item.variationId) : null,
           amount: parseFloat(item.amount),
           quantity: parseInt(item.quantity),
           date: saleDate,
@@ -226,7 +225,6 @@ export function Financeiro() {
           continue
         }
         const product = products.find(p => p.id === item.productId)
-        const isKit = kitCompositions.some(kc => kc.kit_product_id === item.productId)
         const oldTx = income.find(t => t.id === existingId)
         const newQty = parseInt(item.quantity)
         const newAmount = parseFloat(item.amount)
@@ -234,7 +232,7 @@ export function Financeiro() {
         // Update transaction
         await supabase.from('transactions').update({
           product_id: item.productId,
-          variation_id: isKit ? null : (item.variationId || null),
+          variation_id: item.variationId || null,
           amount: newAmount,
           quantity: newQty,
           date: saleDate,
@@ -254,10 +252,9 @@ export function Financeiro() {
       if (validItems.length > editingOrderIds.length) {
         for (let i = editingOrderIds.length; i < validItems.length; i++) {
           const item = validItems[i]
-          const isKit = kitCompositions.some(kc => kc.kit_product_id === item.productId)
           await registerSale.mutateAsync({
             productId: Number(item.productId),
-            variationId: isKit ? null : (item.variationId ? Number(item.variationId) : null),
+            variationId: item.variationId ? Number(item.variationId) : null,
             amount: parseFloat(item.amount),
             quantity: parseInt(item.quantity),
             date: saleDate,
