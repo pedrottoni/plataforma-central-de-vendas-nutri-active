@@ -11,15 +11,13 @@ import { CustomSelect } from '@/components/ui/custom-select'
 
 // ── Expense categories & payment methods ──
 const EXPENSE_CATEGORIES = [
-  { value: 'Combustível', label: 'Combustível' },
-  { value: 'Manutenção Veicular', label: 'Manutenção Veicular' },
+  { value: 'Logística', label: 'Logística' },
   { value: 'Embalagem', label: 'Embalagem' },
-  { value: 'Assinaturas', label: 'Assinaturas' },
-  { value: 'Anúncios', label: 'Anúncios' },
+  { value: 'Operação', label: 'Operação' },
+  { value: 'Marketing', label: 'Marketing' },
   { value: 'Comissões e Taxas', label: 'Comissões e Taxas' },
-  { value: 'Devoluções', label: 'Devoluções' },
   { value: 'Impostos', label: 'Impostos' },
-  { value: 'Outros', label: 'Outros' },
+  { value: 'Devoluções', label: 'Devoluções' },
 ]
 
 const PAYMENT_METHODS = [
