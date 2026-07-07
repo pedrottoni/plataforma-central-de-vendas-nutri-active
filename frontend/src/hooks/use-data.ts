@@ -67,6 +67,8 @@ export interface Transaction {
   quantity: number
   user_id: number
   order_id: string | null
+  payment_method: string | null
+  is_recurring: boolean
 }
 
 export function useUser() {
@@ -809,5 +811,63 @@ export function useLowStockItems(userId: number | undefined) {
       return (data as Product[]).filter(item => item.stock <= 15)
     },
     enabled: !!userId,
+  })
+}
+
+// ── Register Expense ─────────────────────────────────────
+
+interface RegisterExpenseParams {
+  date: string
+  description: string
+  category: string
+  amount: number
+  paymentMethod: string | null
+  isRecurring: boolean
+  userId: number
+}
+
+export function useRegisterExpense() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (params: RegisterExpenseParams) => {
+      const { data, error } = await supabase
+        .from('transactions')
+        .insert({
+          date: params.date,
+          type: 'EXPENSE',
+          category: params.category,
+          description: params.description,
+          amount: params.amount,
+          payment_method: params.paymentMethod,
+          is_recurring: params.isRecurring,
+          quantity: 1,
+          user_id: params.userId,
+        })
+        .select()
+        .single()
+      if (error) throw error
+      return data as Transaction
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+    },
+  })
+}
+
+// ── Delete Expense ───────────────────────────────────────
+
+export function useDeleteExpense() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+    },
   })
 }

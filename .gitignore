@@ -34,3 +34,5 @@ venv/
 
 # Data dumps (contém dados de produção — não commitar)
 *.sql
+# Mas permitir migrations do Supabase
+!supabase/migrations/*.sql

@@ -5,9 +5,30 @@ import { KpiCard } from '@/components/kpi-card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { DatePicker } from '@/components/ui/date-picker'
-import { useUser, useTransactions, useProducts, useProductVariations, useRegisterSale, useDeleteSale, useKitCompositions, useBatchDeleteSales, useBatchUpdateSaleField, useBatchUpdateSaleQuantity, useUpdateSaleField, extractPots } from '@/hooks/use-data'
-import { TrendingUp, Upload, ArrowUpRight, ArrowDownRight, Plus, ChevronUp, ChevronDown, AlertTriangle, Trash2, Check, Minus, Pencil, X } from 'lucide-react'
+import { useUser, useTransactions, useProducts, useProductVariations, useRegisterSale, useDeleteSale, useKitCompositions, useBatchDeleteSales, useBatchUpdateSaleField, useBatchUpdateSaleQuantity, useUpdateSaleField, useRegisterExpense, useDeleteExpense, extractPots } from '@/hooks/use-data'
+import { TrendingUp, Upload, ArrowUpRight, ArrowDownRight, Plus, ChevronUp, ChevronDown, AlertTriangle, Trash2, Check, Minus, Pencil, X, RotateCw } from 'lucide-react'
 import { CustomSelect } from '@/components/ui/custom-select'
+
+// ── Expense categories & payment methods ──
+const EXPENSE_CATEGORIES = [
+  { value: 'Combustível', label: 'Combustível' },
+  { value: 'Manutenção Veicular', label: 'Manutenção Veicular' },
+  { value: 'Embalagem', label: 'Embalagem' },
+  { value: 'Assinaturas', label: 'Assinaturas' },
+  { value: 'Anúncios', label: 'Anúncios' },
+  { value: 'Comissões e Taxas', label: 'Comissões e Taxas' },
+  { value: 'Devoluções', label: 'Devoluções' },
+  { value: 'Impostos', label: 'Impostos' },
+  { value: 'Outros', label: 'Outros' },
+]
+
+const PAYMENT_METHODS = [
+  { value: 'PIX', label: 'PIX' },
+  { value: 'Cartão Crédito', label: 'Cartão Crédito' },
+  { value: 'Cartão Débito', label: 'Cartão Débito' },
+  { value: 'Dinheiro', label: 'Dinheiro' },
+  { value: 'Boleto', label: 'Boleto' },
+]
 
 export function Financeiro() {
   const { data: user } = useUser()
@@ -16,6 +37,8 @@ export function Financeiro() {
   const { data: allVariations = [] } = useProductVariations(products.map(p => p.id))
   const registerSale = useRegisterSale()
   const deleteSale = useDeleteSale()
+  const registerExpense = useRegisterExpense()
+  const deleteExpense = useDeleteExpense()
   const { data: kitCompositions = [] } = useKitCompositions()
 
   const income = useMemo(() => transactions.filter(t => t.type === 'INCOME'), [transactions])
@@ -55,6 +78,14 @@ export function Financeiro() {
   const [editingOrderIds, setEditingOrderIds] = useState<number[]>([]) // IDs das transações existentes deste pedido
   const [visibleSalesCount, setVisibleSalesCount] = useState(20)
   const [visibleExpensesCount, setVisibleExpensesCount] = useState(20)
+
+  // ── Expense form state ──
+  const [expenseDate, setExpenseDate] = useState(new Date().toISOString().split('T')[0])
+  const [expenseDescription, setExpenseDescription] = useState('')
+  const [expenseCategory, setExpenseCategory] = useState<number | ''>('')
+  const [expenseAmount, setExpenseAmount] = useState('')
+  const [expensePaymentMethod, setExpensePaymentMethod] = useState<number | ''>('')
+  const [expenseIsRecurring, setExpenseIsRecurring] = useState(false)
 
   // ── Batch selection state ──
   const [selectedSaleIds, setSelectedSaleIds] = useState<Set<number>>(new Set())
@@ -104,6 +135,35 @@ export function Financeiro() {
     const dateStr = d.split('T')[0]
     const [y, m, day] = dateStr.split('-')
     return `${day}/${m}/${y}`
+  }
+
+  // ── Expense form handlers ──
+  const handleRegisterExpense = async () => {
+    if (!user?.id) return
+    const amount = parseFloat(expenseAmount.replace(',', '.'))
+    if (!expenseDescription.trim() || !expenseCategory || isNaN(amount) || amount <= 0) return
+
+    await registerExpense.mutateAsync({
+      date: expenseDate,
+      description: expenseDescription.trim(),
+      category: EXPENSE_CATEGORIES[expenseCategory].value,
+      amount,
+      paymentMethod: expensePaymentMethod !== '' ? PAYMENT_METHODS[expensePaymentMethod].value : null,
+      isRecurring: expenseIsRecurring,
+      userId: user.id,
+    })
+
+    // Reset form
+    setExpenseDescription('')
+    setExpenseCategory('')
+    setExpenseAmount('')
+    setExpensePaymentMethod('')
+    setExpenseIsRecurring(false)
+    setExpenseDate(new Date().toISOString().split('T')[0])
+  }
+
+  const handleDeleteExpense = async (id: number) => {
+    await deleteExpense.mutateAsync(id)
   }
 
   const sortedIncome = useMemo(() => {
@@ -872,39 +932,182 @@ export function Financeiro() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="despesas" className="mt-4">
+        <TabsContent value="despesas" className="mt-4 space-y-4 overflow-visible">
+          {/* ── Formulário de Despesa ── */}
+          <Card className="bg-card overflow-visible">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                <Plus className="h-4 w-4 text-muted-foreground" />
+                Registrar Despesa
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="overflow-visible">
+              <div className="space-y-4">
+                {/* Linha 1: Data + Categoria */}
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 items-end">
+                  <div className="space-y-1.5 relative">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Data da Despesa
+                    </label>
+                    <DatePicker value={expenseDate} onChange={setExpenseDate} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Categoria
+                    </label>
+                    <CustomSelect
+                      value={expenseCategory}
+                      placeholder="Selecionar categoria..."
+                      options={EXPENSE_CATEGORIES.map((c, i) => ({ value: i, label: c.label }))}
+                      onChange={val => setExpenseCategory(Number(val))}
+                    />
+                  </div>
+                </div>
+
+                {/* Linha 2: Descrição */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Descrição
+                  </label>
+                  <input
+                    type="text"
+                    value={expenseDescription}
+                    onChange={e => setExpenseDescription(e.target.value)}
+                    placeholder="Ex: Gasolina, Claude Pro, Meta Ads..."
+                    className="w-full h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                </div>
+
+                {/* Linha 3: Valor + Forma de Pagamento */}
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 items-end">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Valor
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">R$</span>
+                      <input
+                        type="text"
+                        value={expenseAmount}
+                        onChange={e => setExpenseAmount(e.target.value)}
+                        placeholder="0,00"
+                        className="w-full h-9 rounded-md border border-border bg-background pl-9 pr-3 text-sm font-mono-nums focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Forma de Pagamento
+                    </label>
+                    <CustomSelect
+                      value={expensePaymentMethod}
+                      placeholder="Opcional..."
+                      options={PAYMENT_METHODS.map((m, i) => ({ value: i, label: m.label }))}
+                      onChange={val => setExpensePaymentMethod(Number(val))}
+                    />
+                  </div>
+                </div>
+
+                {/* Linha 4: Recorrente + Botão */}
+                <div className="flex items-center justify-between gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <button
+                      type="button"
+                      onClick={() => setExpenseIsRecurring(!expenseIsRecurring)}
+                      className={`h-5 w-5 rounded border flex items-center justify-center transition-colors ${
+                        expenseIsRecurring
+                          ? 'bg-primary border-primary text-primary-foreground'
+                          : 'border-border bg-background hover:border-primary/50'
+                      }`}
+                    >
+                      {expenseIsRecurring && <Check className="h-3.5 w-3.5" />}
+                    </button>
+                    <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                      <RotateCw className="h-3 w-3" />
+                      Despesa recorrente
+                    </span>
+                  </label>
+
+                  <button
+                    onClick={handleRegisterExpense}
+                    disabled={
+                      registerExpense.isPending ||
+                      !expenseDescription.trim() ||
+                      expenseCategory === '' ||
+                      !expenseAmount ||
+                      isNaN(parseFloat(expenseAmount.replace(',', '.')))
+                    }
+                    className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+                  >
+                    {registerExpense.isPending ? (
+                      <>
+                        <div className="h-3.5 w-3.5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                        Salvando...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="h-4 w-4" />
+                        Adicionar Despesa
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* ── Lista de Despesas ── */}
           <Card className="bg-card">
             <CardHeader>
-              <CardTitle className="text-lg font-semibold">Despesas</CardTitle>
+              <CardTitle className="text-lg font-semibold">Despesas Registradas</CardTitle>
             </CardHeader>
             <CardContent>
               {expenses.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">
-                  Nenhuma despesa registrada.
+                  Nenhuma despesa registrada. Use o formulário acima para adicionar.
                 </p>
               ) : (
                 <div className="space-y-0">
                   {expenses.slice(0, visibleExpensesCount).map(t => (
-                    <div key={t.id} className="flex items-center justify-between py-3 border-b border-border last:border-0">
+                    <div key={t.id} className="flex items-center justify-between py-3 border-b border-border last:border-0 group">
                       <div className="flex items-center gap-3">
                         <div className="h-8 w-8 rounded-lg bg-destructive/12 flex items-center justify-center">
                           <ArrowDownRight className="h-4 w-4 text-destructive" />
                         </div>
                         <div>
-                          <p className="text-sm font-medium">{t.description}</p>
-                          <p className="text-xs text-muted-foreground">
-                            <Badge variant="outline" className="text-[10px] mr-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-medium">{t.description}</p>
+                            {t.is_recurring && (
+                              <RotateCw className="h-3 w-3 text-muted-foreground" />
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <Badge variant="outline" className="text-[10px]">
                               {t.category}
                             </Badge>
-                            <span className="font-mono-nums">
+                            {t.payment_method && (
+                              <Badge variant="secondary" className="text-[10px]">
+                                {t.payment_method}
+                              </Badge>
+                            )}
+                            <span className="text-xs text-muted-foreground font-mono-nums">
                               {fmtDate(t.date)}
                             </span>
-                          </p>
+                          </div>
                         </div>
                       </div>
-                      <span className="text-sm font-semibold font-mono-nums text-destructive">
-                        -R$ {t.amount.toFixed(2)}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold font-mono-nums text-destructive">
+                          -R$ {t.amount.toFixed(2)}
+                        </span>
+                        <button
+                          onClick={() => handleDeleteExpense(t.id)}
+                          disabled={deleteExpense.isPending}
+                          className="h-7 w-7 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
