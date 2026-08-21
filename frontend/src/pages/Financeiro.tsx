@@ -6,8 +6,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { DatePicker } from '@/components/ui/date-picker'
 import { useUser, useTransactions, useProducts, useProductVariations, useRegisterSale, useDeleteSale, useKitCompositions, useBatchDeleteSales, useBatchUpdateSaleField, useBatchUpdateSaleQuantity, useUpdateSaleField, useRegisterExpense, useDeleteExpense, extractPots } from '@/hooks/use-data'
-import { TrendingUp, Upload, ArrowUpRight, ArrowDownRight, Plus, ChevronUp, ChevronDown, AlertTriangle, Trash2, Check, Minus, Pencil, X, RotateCw } from 'lucide-react'
+import { TrendingUp, Upload, ArrowUpRight, ArrowDownRight, Plus, ChevronUp, ChevronDown, AlertTriangle, Trash2, Check, Minus, Pencil, X, RotateCw, BarChart3, PieChart as PieChartIcon, Wallet, Receipt } from 'lucide-react'
 import { CustomSelect } from '@/components/ui/custom-select'
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell } from 'recharts'
 
 // ── Expense categories & payment methods ──
 const EXPENSE_CATEGORIES = [
@@ -39,34 +40,193 @@ export function Financeiro() {
   const deleteExpense = useDeleteExpense()
   const { data: kitCompositions = [] } = useKitCompositions()
 
-  const income = useMemo(() => transactions.filter(t => t.type === 'INCOME'), [transactions])
-  const expenses = useMemo(() => transactions.filter(t => t.type === 'EXPENSE'), [transactions])
-  const totalIncome = income.reduce((s, t) => s + t.amount, 0)
-  const totalExpensesFromTx = expenses.reduce((s, t) => s + t.amount, 0)
-  const totalInvested = products.reduce((s, p) => s + p.total_invested, 0)
-  const totalDespesas = totalExpensesFromTx + totalInvested
+  // ── Period filter ──
+  const PERIOD_OPTIONS = [
+    { value: 'all', label: 'Todo o período' },
+    { value: 'month', label: 'Mês atual' },
+    { value: 'prev_month', label: 'Mês anterior' },
+    { value: '7d', label: 'Últimos 7 dias' },
+    { value: '15d', label: 'Últimos 15 dias' },
+    { value: 'quarter', label: 'Últimos 3 meses' },
+    { value: 'ytd', label: 'Ano atual (YTD)' },
+  ]
+  const [period, setPeriod] = useState<string | number>('all')
 
-  // COGS: custo real do que foi vendido
-  const totalCogs = useMemo(() => {
-    let cogs = 0
-    for (const t of income) {
-      if (t.category === 'kit' && t.product_id) {
-        const kitComps = kitCompositions.filter(kc => kc.kit_product_id === t.product_id)
-        for (const kc of kitComps) {
-          const compProduct = products.find(p => p.id === kc.component_product_id)
-          if (compProduct) cogs += t.quantity * kc.quantity_per_kit * compProduct.supplier_price
-        }
-      } else if (t.variation_id) {
-        const variation = allVariations.find(v => v.id === t.variation_id)
-        if (variation) cogs += t.quantity * variation.supplier_price
-      }
+  // — Date helpers (local, PT-BR) —
+  const startOfToday = () => {
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    return d
+  }
+  const addDays = (date: Date, days: number) => {
+    const d = new Date(date)
+    d.setDate(d.getDate() + days)
+    return d
+  }
+  const startOfMonth = (offset: number) => {
+    const d = new Date()
+    d.setDate(1)
+    d.setHours(0, 0, 0, 0)
+    d.setMonth(d.getMonth() + offset)
+    return d
+  }
+  const startOfYear = () => {
+    const d = new Date()
+    d.setMonth(0, 1)
+    d.setHours(0, 0, 0, 0)
+    return d
+  }
+
+  // Resolve [start, end] for current period filter (inclusive end via next-day start)
+  const periodRange = useMemo((): { start: Date; endExclusive: Date } => {
+    const today = startOfToday()
+    switch (period) {
+      case 'month': return { start: startOfMonth(0), endExclusive: startOfMonth(1) }
+      case 'prev_month': return { start: startOfMonth(-1), endExclusive: startOfMonth(0) }
+      case '7d': return { start: addDays(today, -6), endExclusive: addDays(today, 1) }
+      case '15d': return { start: addDays(today, -14), endExclusive: addDays(today, 1) }
+      case 'quarter': return { start: addDays(today, -90), endExclusive: addDays(today, 1) }
+      case 'ytd': return { start: startOfYear(), endExclusive: addDays(today, 1) }
+      default: return { start: new Date(0), endExclusive: new Date(8640000000000000) }
     }
-    return cogs
-  }, [income, kitCompositions, products, allVariations])
+  }, [period])
 
-  // Lucro = Receita − Investido Total − Despesas
-  const profit = totalIncome - totalDespesas
-  const margin = totalIncome > 0 ? ((profit / totalIncome) * 100).toFixed(1) : '0.0'
+  const txInPeriod = useMemo(() => {
+    return transactions.filter(t => {
+      const d = new Date(t.date.split('T')[0] + 'T12:00:00')
+      return d >= periodRange.start && d < periodRange.endExclusive
+    })
+  }, [transactions, periodRange])
+
+  // — Prev period for MoM / YoY comparison —
+  const prevRange = useMemo((): { start: Date; end: Date } => {
+    const len = periodRange.endExclusive.getTime() - periodRange.start.getTime()
+    return {
+      start: new Date(periodRange.start.getTime() - len),
+      end: new Date(periodRange.start.getTime()),
+    }
+  }, [periodRange])
+
+  const prevTx = useMemo(() => {
+    return transactions.filter(t => {
+      const d = new Date(t.date.split('T')[0] + 'T12:00:00')
+      return d >= prevRange.start && d < prevRange.end
+    })
+  }, [transactions, prevRange])
+
+  const income = useMemo(() => transactions.filter(t => t.type === 'INCOME'), [transactions])
+    const totalInvested = products.reduce((s, p) => s + p.total_invested, 0)
+
+    // ── Period-filtered KPIs ──
+    const incomeInPeriod = useMemo(() => txInPeriod.filter(t => t.type === 'INCOME'), [txInPeriod])
+    const expensesInPeriod = useMemo(() => txInPeriod.filter(t => t.type === 'EXPENSE'), [txInPeriod])
+    const totalIncomeInPeriod = incomeInPeriod.reduce((s, t) => s + t.amount, 0)
+    const totalExpensesInPeriod = expensesInPeriod.reduce((s, t) => s + t.amount, 0)
+
+    // Invested do período: proporcional aos dias cobertos pelo filtro relativo ao total histórico.
+    // O investido não tem data de venda → alocar proporcionalmente pela janela temporal coberta pelos dados.
+    const dataSpanMs = useMemo(() => {
+      if (transactions.length === 0) return 1
+      let min = Infinity
+      let max = -Infinity
+      for (const t of transactions) {
+        const ts = new Date(t.date.split('T')[0] + 'T12:00:00').getTime()
+        if (ts < min) min = ts
+        if (ts > max) max = ts
+      }
+      return Math.max(1, max - min)
+    }, [transactions])
+
+    const investedInPeriod = useMemo(() => {
+      if (period === 'all' || dataSpanMs <= 0) return totalInvested
+      const totalDays = Math.max(1, dataSpanMs / 86400000)
+      const windowMs = periodRange.endExclusive.getTime() - periodRange.start.getTime()
+      const windowDays = Math.max(0, windowMs / 86400000)
+      const coverage = totalDays > 0 ? Math.min(windowDays / totalDays, 1) : 0
+      return totalInvested * coverage
+    }, [period, periodRange, totalInvested, dataSpanMs])
+
+    const totalDespesasInPeriod = totalExpensesInPeriod + investedInPeriod
+    const profitInPeriod = totalIncomeInPeriod - totalDespesasInPeriod
+    const marginInPeriod = totalIncomeInPeriod > 0 ? ((profitInPeriod / totalIncomeInPeriod) * 100).toFixed(1) : '0.0'
+
+    // Comparativo vs período anterior (MoM / YoY)
+    const prevIncome = prevTx.filter(t => t.type === 'INCOME').reduce((s, t) => s + t.amount, 0)
+    const prevExpenses = prevTx.filter(t => t.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0)
+    const prevProfit = prevIncome - prevExpenses
+    const incomeDeltaPct = prevIncome > 0 ? ((totalIncomeInPeriod - prevIncome) / prevIncome) * 100 : null
+    const profitDeltaPct = prevProfit !== 0 ? ((profitInPeriod - prevProfit) / Math.abs(prevProfit)) * 100 : null
+
+    // Ticket médio + nº transações do período
+    const ticketMedio = incomeInPeriod.length > 0 ? totalIncomeInPeriod / incomeInPeriod.length : 0
+    const txPlural = (n: number, singular: string, plural: string) => (n === 1 ? singular : plural)
+
+    // ── Fluxo de caixa (por dia se janela curta, senão por mês) ──
+    const cashFlow = useMemo(() => {
+      const windowDays = (periodRange.endExclusive.getTime() - periodRange.start.getTime()) / 86400000
+      const byMonth = windowDays > 31
+      const fmtDay = (d: Date) => {
+        const dd = String(d.getDate()).padStart(2, '0')
+        const mm = String(d.getMonth() + 1).padStart(2, '0')
+        return `${dd}/${mm}`
+      }
+      const MONTH_ABBR = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+      const fmtMonth = (d: Date) => `${MONTH_ABBR[d.getMonth()]}/${String(d.getFullYear()).slice(2)}`
+      // chave de ordenação = data ISO; label = exibição
+      const map = new Map<string, { income: number; expense: number; day: string; sortKey: string }>()
+      for (const t of txInPeriod) {
+        const d = new Date(t.date.split('T')[0] + 'T12:00:00')
+        const key = byMonth ? t.date.slice(0, 7) : t.date.split('T')[0]
+        const cur = map.get(key) ?? { income: 0, expense: 0, day: byMonth ? fmtMonth(d) : fmtDay(d), sortKey: key }
+        if (t.type === 'INCOME') cur.income += t.amount
+        else cur.expense += t.amount
+        map.set(key, cur)
+      }
+      return Array.from(map.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+    }, [txInPeriod, periodRange])
+
+    // ── Despesas por categoria (pizza) ──
+    const expensesByCategory = useMemo(() => {
+      const map = new Map<string, number>()
+      for (const t of expensesInPeriod) {
+        map.set(t.category, (map.get(t.category) ?? 0) + t.amount)
+      }
+      return Array.from(map.entries())
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value)
+    }, [expensesInPeriod])
+
+    const CHART_COLORS = {
+      success: 'oklch(72% 0.16 145)',
+      destructive: 'oklch(65% 0.20 25)',
+      primary: 'oklch(65% 0.17 255)',
+      warning: 'oklch(75% 0.16 85)',
+      muted: 'oklch(30% 0.015 255)',
+    }
+    const PIE_COLORS = [
+      'oklch(72% 0.16 145)',
+      'oklch(65% 0.20 25)',
+      'oklch(65% 0.17 255)',
+      'oklch(75% 0.16 85)',
+      'oklch(60% 0.14 310)',
+      'oklch(70% 0.12 180)',
+      'oklch(68% 0.13 40)',
+    ]
+
+    // ── Top produtos por faturamento ──
+    const topProducts = useMemo(() => {
+      const map = new Map<string, { name: string; revenue: number; qty: number }>()
+      for (const t of incomeInPeriod) {
+        const name = t.description.replace(/\s*\(.*\)$/, '').trim()
+        const cur = map.get(name) ?? { name, revenue: 0, qty: 0 }
+        cur.revenue += t.amount
+        cur.qty += t.quantity
+        map.set(name, cur)
+      }
+      return Array.from(map.values())
+        .sort((a, b) => b.revenue - a.revenue)
+        .slice(0, 10)
+    }, [incomeInPeriod])
 
   // Sale form state
   interface SaleItem { productId: number | ''; variationId: number | ''; amount: string; quantity: string }
@@ -165,14 +325,14 @@ export function Financeiro() {
   }
 
   const sortedIncome = useMemo(() => {
-    const arr = [...income]
-    switch (saleSort) {
-      case 'description': return arr.sort((a, b) => saleAsc ? a.description.localeCompare(b.description) : b.description.localeCompare(a.description))
-      case 'quantity': return arr.sort((a, b) => saleAsc ? a.quantity - b.quantity : b.quantity - a.quantity)
-      case 'date': return arr.sort((a, b) => saleAsc ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date))
-      case 'amount': return arr.sort((a, b) => saleAsc ? a.amount - b.amount : b.amount - a.amount)
-    }
-  }, [income, saleSort, saleAsc])
+      const arr = [...incomeInPeriod]
+      switch (saleSort) {
+        case 'description': return arr.sort((a, b) => saleAsc ? a.description.localeCompare(b.description) : b.description.localeCompare(a.description))
+        case 'quantity': return arr.sort((a, b) => saleAsc ? a.quantity - b.quantity : b.quantity - a.quantity)
+        case 'date': return arr.sort((a, b) => saleAsc ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date))
+        case 'amount': return arr.sort((a, b) => saleAsc ? a.amount - b.amount : b.amount - a.amount)
+      }
+    }, [incomeInPeriod, saleSort, saleAsc])
 
   // Variation lookup: variationId → variation name + available variations per product
   const variationMap = useMemo(() => {
@@ -333,18 +493,8 @@ export function Financeiro() {
   const isAnyItemValid = saleItems.some(item => item.productId && item.variationId && item.amount && item.quantity && (parseInt(item.quantity) || 0) >= 1 && (parseFloat(item.amount) || 0) > 0)
   const isAnyItemInsufficient = saleItems.some(item => getItemPreview(item).insufficientStock)
 
-  // Monthly chart data (mock for visual reference)
-  const monthlyData = [
-    { month: 'Jan', income: 1200, expense: 800 },
-    { month: 'Fev', income: 1500, expense: 900 },
-    { month: 'Mar', income: 1800, expense: 1100 },
-    { month: 'Abr', income: 2100, expense: 1200 },
-    { month: 'Mai', income: 1900, expense: 1000 },
-    { month: 'Jun', income: totalIncome || 2400, expense: totalDespesas || 1300 },
-  ]
-
-  // ── Batch selection handlers ──
-  const toggleSaleSelection = (id: number) => {
+    // ── Batch selection handlers ──
+    const toggleSaleSelection = (id: number) => {
     setSelectedSaleIds(prev => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
@@ -393,42 +543,57 @@ export function Financeiro() {
   }
 
   const allSalesSelected = income.length > 0 && selectedSaleIds.size === income.length
-  const maxMonthly = Math.max(...monthlyData.map(d => Math.max(d.income, d.expense)))
 
-  return (
-    <div className="space-y-6">
+    return (
+        <div className="space-y-6">
 
-      {/* ── KPIs ── */}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard
-          icon={ArrowUpRight}
-          label="Receita"
-          value={`R$ ${totalIncome.toFixed(2)}`}
-          description={`${income.length} vendas`}
-          valueColor="text-success"
-        />
-        <KpiCard
-          icon={TrendingUp}
-          label="Lucro Bruto"
-          value={`R$ ${(totalIncome - totalCogs).toFixed(2)}`}
-          description={`receita − custo do que foi vendido`}
-          valueColor={(totalIncome - totalCogs) >= 0 ? 'text-success' : 'text-destructive'}
-        />
-        <KpiCard
-          icon={ArrowDownRight}
-          label="Despesas"
-          value={`R$ ${totalDespesas.toFixed(2)}`}
-          description={`${expenses.length} transações + R$ ${totalInvested.toFixed(2)} investido`}
-          valueColor="text-destructive"
-        />
-        <KpiCard
-          icon={TrendingUp}
-          label="Lucro"
-          value={`R$ ${profit.toFixed(2)}`}
-          description={`margem ${margin}%`}
-          valueColor={profit >= 0 ? 'text-success' : 'text-destructive'}
-        />
-      </div>
+          {/* ── Filtro de período (toolbar do layout já mostra o título da página) ── */}
+          <div className="flex items-center justify-end gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Período
+            </span>
+            <div className="w-44">
+              <CustomSelect
+                value={period}
+                options={PERIOD_OPTIONS}
+                onChange={val => setPeriod(val)}
+              />
+            </div>
+          </div>
+
+        {/* ── KPIs (respeitam o período) ── */}
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+          <KpiCard
+            icon={ArrowUpRight}
+            label="Receita"
+            value={`R$ ${totalIncomeInPeriod.toFixed(2)}`}
+            description={`${incomeInPeriod.length} venda${incomeInPeriod.length !== 1 ? 's' : ''}`}
+            valueColor="text-success"
+            trend={incomeDeltaPct !== null && incomeDeltaPct !== 0 ? { value: Math.abs(Math.round(incomeDeltaPct)), positive: incomeDeltaPct > 0 } : undefined}
+          />
+          <KpiCard
+            icon={Receipt}
+            label="Ticket Médio"
+            value={`R$ ${ticketMedio.toFixed(2)}`}
+            description={`em ${incomeInPeriod.length} transaç${txPlural(incomeInPeriod.length, 'ão', 'ões')}`}
+            valueColor=""
+          />
+          <KpiCard
+            icon={ArrowDownRight}
+            label="Despesas"
+            value={`R$ ${totalDespesasInPeriod.toFixed(2)}`}
+            description={`${expensesInPeriod.length} transaç${txPlural(expensesInPeriod.length, 'ão', 'ões')} + R$ ${investedInPeriod.toFixed(2)} investido`}
+            valueColor="text-destructive"
+          />
+          <KpiCard
+            icon={TrendingUp}
+            label="Lucro"
+            value={`R$ ${profitInPeriod.toFixed(2)}`}
+            description={`margem ${marginInPeriod}%`}
+            valueColor={profitInPeriod >= 0 ? 'text-success' : 'text-destructive'}
+            trend={profitDeltaPct !== null && profitDeltaPct !== 0 ? { value: Math.abs(Math.round(profitDeltaPct)), positive: profitDeltaPct > 0 } : undefined}
+          />
+        </div>
 
       {/* ── Tabs ── */}
       <Tabs defaultValue="dashboard">
@@ -439,44 +604,124 @@ export function Financeiro() {
           <TabsTrigger value="uploads" className="text-xs">Uploads</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="dashboard" className="mt-4">
-          <Card className="bg-card">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg font-semibold">Visão Mensal</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-48 flex items-end gap-3">
-                {monthlyData.map((d, i) => (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                    <div className="w-full flex items-end justify-center gap-1" style={{ height: '160px' }}>
-                      <div
-                        className="w-5 rounded-t bg-success/80 hover:bg-success transition-colors"
-                        style={{ height: `${(d.income / maxMonthly) * 140}px` }}
-                        title={`Receita: R$ ${d.income}`}
-                      />
-                      <div
-                        className="w-5 rounded-t bg-destructive/80 hover:bg-destructive transition-colors"
-                        style={{ height: `${(d.expense / maxMonthly) * 140}px` }}
-                        title={`Despesas: R$ ${d.expense}`}
-                      />
-                    </div>
-                    <span className="text-[10px] text-muted-foreground">{d.month}</span>
+        <TabsContent value="dashboard" className="mt-4 space-y-4">
+                  {/* ── Fluxo de Caixa (diário) ── */}
+                  <Card className="bg-card">
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                          <Wallet className="h-4 w-4 text-muted-foreground" />
+                          Fluxo de Caixa
+                        </CardTitle>
+                        <span className="text-xs text-muted-foreground font-mono-nums">
+                          {PERIOD_OPTIONS.find(o => o.value === period)?.label}
+                        </span>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      {cashFlow.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-10">
+                          Sem transações no período selecionado.
+                        </p>
+                      ) : (
+                        <div className="h-64">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={cashFlow} barGap={2}>
+                              <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.muted} vertical={false} />
+                              <XAxis dataKey="day" tick={{ fontSize: 11, fill: 'oklch(55% 0.015 250)' }} tickLine={false} axisLine={{ stroke: CHART_COLORS.muted }} />
+                              <YAxis tick={{ fontSize: 11, fill: 'oklch(55% 0.015 250)' }} tickLine={false} axisLine={false} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(1)}k` : `${v}`} width={46} />
+                              <Tooltip
+                                contentStyle={{ background: 'oklch(19% 0.015 255)', border: '1px solid oklch(26% 0.018 255)', borderRadius: 8, fontSize: 12 }}
+                                labelStyle={{ color: 'oklch(90% 0.005 250)', fontWeight: 600 }}
+                                formatter={(value, name) => [`R$ ${Number(value).toFixed(2)}`, name === 'income' ? 'Receita' : 'Despesas']}
+                              />
+                              <Legend wrapperStyle={{ fontSize: 12 }} formatter={(value) => (value === 'income' ? 'Receita' : 'Despesas')} />
+                              <Bar dataKey="income" fill={CHART_COLORS.success} radius={[4, 4, 0, 0]} maxBarSize={28} />
+                              <Bar dataKey="expense" fill={CHART_COLORS.destructive} radius={[4, 4, 0, 0]} maxBarSize={28} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* ── Top Produtos + Despesas por Categoria ── */}
+                  <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
+                    {/* Top Produtos */}
+                    <Card className="bg-card">
+                      <CardHeader className="pb-2">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                            Top Produtos por Faturamento
+                          </CardTitle>
+                          <span className="text-xs text-muted-foreground font-mono-nums">top {topProducts.length}</span>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        {topProducts.length === 0 ? (
+                          <p className="text-sm text-muted-foreground text-center py-10">
+                            Sem vendas no período selecionado.
+                          </p>
+                        ) : (
+                          <div className="h-72">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={topProducts} layout="vertical" margin={{ left: 8, right: 8 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.muted} horizontal={false} />
+                                <XAxis type="number" tick={{ fontSize: 11, fill: 'oklch(55% 0.015 250)' }} tickLine={false} axisLine={false} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(1)}k` : `${v}`} />
+                                <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 11, fill: 'oklch(55% 0.015 250)' }} tickLine={false} axisLine={false} />
+                                <Tooltip
+                                  contentStyle={{ background: 'oklch(19% 0.015 255)', border: '1px solid oklch(26% 0.018 255)', borderRadius: 8, fontSize: 12 }}
+                                  labelStyle={{ color: 'oklch(90% 0.005 250)', fontWeight: 600 }}
+                                  formatter={(value, name) => [`R$ ${Number(value).toFixed(2)}`, name === 'revenue' ? 'Faturamento' : 'Quantidade']}
+                                />
+                                <Bar dataKey="revenue" fill={CHART_COLORS.primary} radius={[0, 4, 4, 0]} maxBarSize={20} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    {/* Despesas por Categoria */}
+                    <Card className="bg-card">
+                      <CardHeader className="pb-2">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                            <PieChartIcon className="h-4 w-4 text-muted-foreground" />
+                            Despesas por Categoria
+                          </CardTitle>
+                          <span className="text-xs text-muted-foreground font-mono-nums">R$ {totalExpensesInPeriod.toFixed(2)}</span>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        {expensesByCategory.length === 0 ? (
+                          <p className="text-sm text-muted-foreground text-center py-10">
+                            Sem despesas no período selecionado.
+                          </p>
+                        ) : (
+                          <div className="h-72">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                <Pie data={expensesByCategory} dataKey="value" nameKey="name" innerRadius={55} outerRadius={85} paddingAngle={2}>
+                                  {expensesByCategory.map((_, i) => (
+                                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                                  ))}
+                                </Pie>
+                                <Tooltip
+                                  contentStyle={{ background: 'oklch(19% 0.015 255)', border: '1px solid oklch(26% 0.018 255)', borderRadius: 8, fontSize: 12 }}
+                                  labelStyle={{ color: 'oklch(90% 0.005 250)', fontWeight: 600 }}
+                                  formatter={(value, name) => [`R$ ${Number(value).toFixed(2)}`, name]}
+                                />
+                                <Legend wrapperStyle={{ fontSize: 12 }} />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
                   </div>
-                ))}
-              </div>
-              <div className="flex items-center justify-center gap-4 mt-3">
-                <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <span className="w-2.5 h-2.5 rounded bg-success/80" />
-                  Receita
-                </span>
-                <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <span className="w-2.5 h-2.5 rounded bg-destructive/80" />
-                  Despesas
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+                </TabsContent>
 
         <TabsContent value="vendas" className="mt-4 space-y-4 overflow-visible">
           {/* ── Formulário de Pedido ── */}
@@ -685,7 +930,7 @@ export function Financeiro() {
             <CardHeader>
               <div className="flex items-center justify-between gap-4">
                 <CardTitle className="text-lg font-semibold shrink-0">
-                  Vendas — {income.length} registro{income.length !== 1 ? 's' : ''}
+                  Vendas — {incomeInPeriod.length} registro{incomeInPeriod.length !== 1 ? 's' : ''}
                 </CardTitle>
                 {/* ── Bulk action bar ── */}
                 {selectedSaleIds.size > 0 && (
@@ -916,13 +1161,14 @@ export function Financeiro() {
                   })}
                 </div>
               )}
-              {income.length > visibleSalesCount && (
-                <div className="text-center mt-3">
-                  <button
-                    onClick={() => setVisibleSalesCount(prev => prev + 20)}
-                    className="text-sm text-primary hover:text-primary/80 font-medium transition-colors"
+              {incomeInPeriod.length > visibleSalesCount && (
+                              <div className="text-center mt-3">
+                                <button
+                                  onClick={() => setVisibleSalesCount(prev => prev + 20)}
+                                  className="text-sm text-primary hover:text-primary/80 font-medium transition-colors"
+                                  title="Mostrar mais"
                   >
-                    Mostrar mais ({income.length - visibleSalesCount} restantes)
+                    Mostrar mais ({incomeInPeriod.length - visibleSalesCount} restantes)
                   </button>
                 </div>
               )}
@@ -1060,13 +1306,13 @@ export function Financeiro() {
               <CardTitle className="text-lg font-semibold">Despesas Registradas</CardTitle>
             </CardHeader>
             <CardContent>
-              {expenses.length === 0 ? (
+              {expensesInPeriod.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">
                   Nenhuma despesa registrada. Use o formulário acima para adicionar.
                 </p>
               ) : (
                 <div className="space-y-0">
-                  {expenses.slice(0, visibleExpensesCount).map(t => (
+                  {expensesInPeriod.slice(0, visibleExpensesCount).map(t => (
                     <div key={t.id} className="flex items-center justify-between py-3 border-b border-border last:border-0 group">
                       <div className="flex items-center gap-3">
                         <div className="h-8 w-8 rounded-lg bg-destructive/12 flex items-center justify-center">
@@ -1110,13 +1356,13 @@ export function Financeiro() {
                   ))}
                 </div>
               )}
-              {expenses.length > visibleExpensesCount && (
-                <div className="text-center mt-3">
-                  <button
-                    onClick={() => setVisibleExpensesCount(prev => prev + 20)}
-                    className="text-sm text-primary hover:text-primary/80 font-medium transition-colors"
-                  >
-                    Mostrar mais ({expenses.length - visibleExpensesCount} restantes)
+              {expensesInPeriod.length > visibleExpensesCount && (
+                              <div className="text-center mt-3">
+                                <button
+                                  onClick={() => setVisibleExpensesCount(prev => prev + 20)}
+                                  className="text-sm text-primary hover:text-primary/80 font-medium transition-colors"
+                                >
+                                  Mostrar mais ({expensesInPeriod.length - visibleExpensesCount} restantes)
                   </button>
                 </div>
               )}
