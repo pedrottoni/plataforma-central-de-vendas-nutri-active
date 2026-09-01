@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { useUser, useProducts, useProductVariations, useKitCompositions, useTransactions } from '@/hooks/use-data'
+import { PrecificacaoCalc } from '@/components/precificacao-calc'
 import { supabase } from '@/lib/supabase'
 import { Package, BarChart3, DollarSign, ArrowUpDown, ChevronDown, ChevronUp, ChevronRight, Plus, Minus, TrendingUp, Percent, Receipt } from 'lucide-react'
 
@@ -371,64 +372,7 @@ export function Anuncios() {
 
         {/* ─── Tab: Precificação ─── */}
         <TabsContent value="precificacao" className="mt-4">
-          <Card className="bg-card">
-            <CardHeader>
-              <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
-                Calculadora de Precificação
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Preço de Venda (R$)
-                  </label>
-                  <input
-                    type="number"
-                    placeholder="0.00"
-                    className="w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm font-mono-nums focus:outline-none focus:ring-1 focus:ring-ring"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Custo do Fornecedor (R$)
-                  </label>
-                  <input
-                    type="number"
-                    placeholder="0.00"
-                    className="w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm font-mono-nums focus:outline-none focus:ring-1 focus:ring-ring"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Taxa Marketplace (%)
-                  </label>
-                  <input
-                    type="number"
-                    placeholder="12"
-                    defaultValue={12}
-                    className="w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm font-mono-nums focus:outline-none focus:ring-1 focus:ring-ring"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Frete Estimado (R$)
-                  </label>
-                  <input
-                    type="number"
-                    placeholder="0.00"
-                    className="w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm font-mono-nums focus:outline-none focus:ring-1 focus:ring-ring"
-                  />
-                </div>
-              </div>
-              <div className="mt-4 p-4 rounded-lg bg-secondary/50 border border-border">
-                <p className="text-xs text-muted-foreground text-center">
-                  Calculadora será processada quando os campos forem preenchidos.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          <PrecificacaoCalc products={products} />
         </TabsContent>
       </Tabs>
 
