@@ -55,9 +55,9 @@ export function PrecificacaoCalc({ products }: Props) {
 
   // ── Toggles / promoções ──
   const [pix, setPix] = useState(true) // PIX dá desconto na Shopee (~5%)
-  const [fretePagoComprador, setFretePagoComprador] = useState(false)
   const [amp, setAmp] = useState(false) // Acréscimo por Método de Pagamento (parcelado)
   const [cupomPct, setCupomPct] = useState<string>('') // promoção aplicada na plataforma
+  const [freteComprador, setFreteComprador] = useState<string>('') // frete pago pelo comprador (R$)
   const [targetMargin, setTargetMargin] = useState<string>('30') // margem líquida desejada % (solver reverso)
 
   const pixPct = 5 // desconto PIX padrão (editável via toggle on/off)
@@ -100,8 +100,8 @@ export function PrecificacaoCalc({ products }: Props) {
 
     // 4) PIX (desconto) / AMP (acréscimo)
     const pixLine = pix ? { key: 'pix', label: 'Desconto PIX', amount: precoLiquido * pixPct / 100 } : null
+    const freteComp = parseFloat(freteComprador) || 0
     const ampLine = amp ? { key: 'amp', label: 'AMP (parcelado)', amount: -(precoLiquido * ampPct) / 100 } : null
-    const freteLine = fretePagoComprador ? { key: 'frete', label: 'Frete pago pelo comprador', amount: 0 } : null
 
     const lines = [
       { key: 'preco', label: 'Preço do Produto', amount: priceNum },
@@ -110,15 +110,16 @@ export function PrecificacaoCalc({ products }: Props) {
       itemLine,
       ...(pixLine ? [pixLine] : []),
       ...(ampLine ? [ampLine] : []),
-      ...(freteLine ? [freteLine] : []),
     ]
 
     const renda = lines.reduce((s, l) => s + l.amount, 0)
     const lucro = renda - costNum
     const margem = renda > 0 ? (lucro / renda) * 100 : 0
+    // Valor que o comprador paga no checkout (não afeta a renda do vendedor)
+    const pagamentoComprador = precoLiquido + freteComp
 
-    return { valid: true, lines, renda, lucro, margem, itemFeeApplied, cupomValue }
-  }, [price, cost, cupomPct, fees, itemFee, pix, amp, fretePagoComprador])
+    return { valid: true, lines, renda, lucro, margem, itemFeeApplied, cupomValue, pagamentoComprador }
+  }, [price, cost, cupomPct, freteComprador, fees, itemFee, pix, amp])
 
   // Alerta de faixa: se está na faixa alta, dividir pode reduzir a taxa por item
   const priceNum = parseFloat(price) || 0
@@ -209,7 +210,6 @@ export function PrecificacaoCalc({ products }: Props) {
           <div className="flex flex-wrap gap-2 pt-1">
             {[
               { label: 'PIX (-5%)', on: pix, set: setPix },
-              { label: 'Frete p/ comprador', on: fretePagoComprador, set: setFretePagoComprador },
               { label: 'AMP (parcelado)', on: amp, set: setAmp },
             ].map(t => (
               <button
@@ -223,6 +223,17 @@ export function PrecificacaoCalc({ products }: Props) {
                 {t.label}
               </button>
             ))}
+
+          {/* Frete pago pelo comprador (R$) */}
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-muted-foreground">Frete pago pelo comprador (R$)</label>
+            <input
+              type="number" value={freteComprador} onChange={e => setFreteComprador(e.target.value)}
+              placeholder="0,00"
+              className="w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm font-mono-nums focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            <p className="text-[11px] text-muted-foreground">Valor que aparece no checkout somado ao preço. Não afeta sua renda (Shopee repassa).</p>
+          </div>
           </div>
 
           {/* Parâmetros de taxa (editáveis) */}
@@ -303,6 +314,10 @@ export function PrecificacaoCalc({ products }: Props) {
                 <div className="grid grid-cols-[1fr_auto] gap-x-4 px-3 py-2 text-sm font-semibold border-t border-border bg-secondary/40">
                   <span>Renda Líquida (cai na conta)</span>
                   <span className="font-mono-nums text-right text-success">{brl(calc.renda)}</span>
+                </div>
+                <div className="grid grid-cols-[1fr_auto] gap-x-4 px-3 py-2 text-sm font-semibold border-t border-border">
+                  <span>Pagamento do Comprador</span>
+                  <span className="font-mono-nums text-right">{brl(calc.pagamentoComprador ?? 0)}</span>
                 </div>
               </div>
 
