@@ -4,11 +4,18 @@ import { CustomSelect } from '@/components/ui/custom-select'
 import { DollarSign, TrendingUp, AlertTriangle, Info } from 'lucide-react'
 import type { Product } from '@/hooks/use-data'
 
-// ── Modelo de custos (derivado dos extratos reais da Shopee + DAS 07/2026) ──
-// Toda taxa é editável. Defaults calibrados nos pedidos do Pedro:
-//  1 pote 37,65 → taxa item 4,00 | 2 potes 62,45 → 4,00 | 3 potes 84,30/95,08 → 16,00
-//  => taxa por item é ESCALONADA por faixa de preço, não fixa.
-//  Simples 4% = alíquota EFETIVA do DAS (510,93 / 12.773,52). Aviso: sobe por faixa do RBT12.
+// ── Modelo de custos (Shopee 2026, vendedor CNPJ) ──
+// Fonte: seller.br.shopee.cn/edu/article/26839 + extratos reais do Pedro.
+// A "Taxa por item" e a COMISSÃO são ESCALONADAS por faixa de preço líquido
+// (preço após cupom). Abaixo de R$80: comissão 20% + taxa R$4. Acima: 14% + R$16.
+// threshold oficial = R$79,99 (usamos 80).
+// Simples 4% = alíquota EFETIVA do DAS 07/2026 (510,93 / 12.773,52).
+
+interface FeeTier {
+  threshold: number        // teto da faixa (preço líquido <= threshold)
+  comissao: number         // % comissão nesta faixa
+  itemFee: number          // taxa fixa por item nesta faixa
+}
 
 interface FeeParam {
   key: string
@@ -19,8 +26,18 @@ interface FeeParam {
   editable: boolean
 }
 
+// Faixas oficiais (CNPJ). Editáveis.
+const DEFAULT_TIERS: FeeTier[] = [
+  { threshold: 79.99, comissao: 20, itemFee: 4 },
+  { threshold: 99.99, comissao: 14, itemFee: 16 },
+  { threshold: 199.99, comissao: 14, itemFee: 20 },
+  { threshold: 499.99, comissao: 14, itemFee: 26 },
+  { threshold: Infinity, comissao: 14, itemFee: 26 },
+]
+
+// Taxas % sobre o preço líquido (fora a comissão, que é por faixa).
+// Defaults calibrados nos extratos reais do Pedro.
 const DEFAULT_FEES: FeeParam[] = [
-  { key: 'comissao', label: 'Taxa de Comissão', kind: 'pct', value: 12, editable: true },
   { key: 'ads', label: 'Ads Fácil', kind: 'pct', value: 5, editable: true },
   { key: 'servico_adic', label: 'Serviço Adicional', kind: 'pct', value: 3.5, editable: true },
   { key: 'transacao', label: 'Taxa de Transação', kind: 'pct', value: 2, editable: true },
@@ -29,10 +46,8 @@ const DEFAULT_FEES: FeeParam[] = [
   { key: 'simples', label: 'Simples Nacional (DAS)', kind: 'pct', value: 4, editable: true },
 ]
 
-const DEFAULT_ITEM_FEE = {
-  threshold: 63, // preço acima disso cai na faixa alta
-  low: 4,
-  high: 16,
+function tierFor(precoLiquido: number): FeeTier {
+  return DEFAULT_TIERS.find(t => precoLiquido <= t.threshold) ?? DEFAULT_TIERS[DEFAULT_TIERS.length - 1]
 }
 
 function brl(n: number): string {
@@ -51,7 +66,7 @@ export function PrecificacaoCalc({ products }: Props) {
 
   // ── Parâmetros editáveis ──
   const [fees, setFees] = useState<FeeParam[]>(DEFAULT_FEES)
-  const [itemFee, setItemFee] = useState(DEFAULT_ITEM_FEE)
+  const [tiers, setTiers] = useState<FeeTier[]>(DEFAULT_TIERS)
 
   // ── Toggles / promoções ──
   const [pix, setPix] = useState(true) // PIX dá desconto na Shopee (~5%)
@@ -87,16 +102,18 @@ export function PrecificacaoCalc({ products }: Props) {
     const cupomValue = priceNum * cupom
     const precoLiquido = priceNum - cupomValue
 
-    // 2) Taxas percentuais sobre o preço líquido
+    // 2) Taxas percentuais sobre o preço líquido (exceto comissão, que é por faixa)
+    const tier = tierFor(precoLiquido)
     const pctLines = fees.map(f => ({
       key: f.key,
       label: f.label,
       amount: -(precoLiquido * f.value) / 100,
     }))
+    const comissaoLine = { key: 'comissao', label: `Taxa de Comissão (${tier.comissao}%)`, amount: -(precoLiquido * tier.comissao) / 100 }
 
-    // 3) Taxa por item (escalonada)
-    const itemFeeApplied = precoLiquido > itemFee.threshold ? itemFee.high : itemFee.low
-    const itemLine = { key: 'item', label: `Taxa por item (faixa ${precoLiquido > itemFee.threshold ? 'alta' : 'baixa'})`, amount: -itemFeeApplied }
+    // 3) Taxa por item (escalonada por faixa)
+    const itemFeeApplied = tier.itemFee
+    const itemLine = { key: 'item', label: `Taxa por item (faixa ${precoLiquido <= 79.99 ? 'baixa' : 'alta'})`, amount: -itemFeeApplied }
 
     // 4) PIX (desconto) / AMP (acréscimo)
     const pixLine = pix ? { key: 'pix', label: 'Desconto PIX', amount: precoLiquido * pixPct / 100 } : null
@@ -106,6 +123,7 @@ export function PrecificacaoCalc({ products }: Props) {
     const lines = [
       { key: 'preco', label: 'Preço do Produto', amount: priceNum },
       ...(cupom > 0 ? [{ key: 'cupom', label: 'Cupom / Promoção', amount: -cupomValue }] : []),
+      comissaoLine,
       ...pctLines,
       itemLine,
       ...(pixLine ? [pixLine] : []),
@@ -119,11 +137,11 @@ export function PrecificacaoCalc({ products }: Props) {
     const pagamentoComprador = precoLiquido + freteComp
 
     return { valid: true, lines, renda, lucro, margem, itemFeeApplied, cupomValue, pagamentoComprador }
-  }, [price, cost, cupomPct, freteComprador, fees, itemFee, pix, amp])
+  }, [price, cost, cupomPct, freteComprador, fees, tiers, pix, amp])
 
   // Alerta de faixa: se está na faixa alta, dividir pode reduzir a taxa por item
   const priceNum = parseFloat(price) || 0
-  const inHighTier = calc.valid && priceNum > itemFee.threshold
+  const inHighTier = calc.valid && priceNum > 79.99
   const pctItemShare = calc.valid && priceNum > 0 ? (calc.itemFeeApplied / priceNum) * 100 : 0
 
   // ── Solver reverso: preço-alvo dada uma margem líquida desejada ──
@@ -138,21 +156,31 @@ export function PrecificacaoCalc({ products }: Props) {
     const pctSum = fees.reduce((acc, f) => acc + f.value / 100, 0)
     const pixEff = pix ? pixPct / 100 : 0
     const ampEff = amp ? ampPct / 100 : 0
-    const k = s * (1 + pixEff - ampEff - pctSum)
-    if (k <= 0) return { infeasible: true as const }
-    const targetRenda = costNum / (1 - m)
-    const tryTier = (F: number) => ({ P: (targetRenda + F) / k, PL: ((targetRenda + F) / k) * s, F })
-    const low = tryTier(itemFee.low)
-    const high = tryTier(itemFee.high)
-    let chosen: { P: number; PL: number; F: number; tier: string }
-    if (low.P * s <= itemFee.threshold) chosen = { ...low, tier: 'baixa' }
-    else if (high.P * s > itemFee.threshold) chosen = { ...high, tier: 'alta' }
-    else chosen = { ...low, tier: 'baixa (aprox.)' }
-    const renda = chosen.P * s * (1 + pixEff - ampEff - pctSum) - chosen.F
+    const kBase = s * (1 + pixEff - ampEff - pctSum) // coeficiente das taxas % (sem comissão/taxa-item)
+    if (kBase <= 0) return { infeasible: true as const }
+    // Para cada faixa, comissão c e taxa-item F: renda = P·s·(kBase) − P·s·c − F
+    //   = P·s·(kBase − c) − F. Margem m → renda = custo/(1−m).
+    //   P = (custo/(1−m) + F) / (s·(kBase − c))
+    let chosen: { P: number; PL: number; F: number; tier: string; comissao: number } | null = null
+    for (const t of tiers) {
+      const denom = s * (kBase - t.comissao / 100)
+      if (denom <= 0) continue
+      const P = (costNum / (1 - m) + t.itemFee) / denom
+      const PL = P * s
+      if (PL <= t.threshold) { chosen = { P, PL, F: t.itemFee, tier: `até ${t.threshold === Infinity ? '∞' : brl(t.threshold)}`, comissao: t.comissao }; break }
+    }
+    if (!chosen) {
+      const last = tiers[tiers.length - 1]
+      const denom = s * (kBase - last.comissao / 100)
+      if (denom <= 0) return { infeasible: true as const }
+      const P = (costNum / (1 - m) + last.itemFee) / denom
+      chosen = { P, PL: P * s, F: last.itemFee, tier: 'alta (aprox.)', comissao: last.comissao }
+    }
+    const renda = chosen.PL * (kBase - chosen.comissao / 100) - chosen.F
     const lucro = renda - costNum
     const margemReal = renda > 0 ? (lucro / renda) * 100 : 0
-    return { infeasible: false as const, price: chosen.P, tier: chosen.tier, renda, lucro, margemReal }
-  }, [cost, targetMargin, cupomPct, fees, itemFee, pix, amp, pixPct, ampPct])
+    return { infeasible: false as const, price: chosen.P, tier: chosen.tier, lucro, margemReal }
+  }, [cost, targetMargin, cupomPct, fees, tiers, pix, amp, pixPct, ampPct])
 
   return (
     <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
@@ -256,29 +284,36 @@ export function PrecificacaoCalc({ products }: Props) {
             </div>
           </div>
 
-          {/* Taxa por item (escalonada) */}
+          {/* Taxas por faixa (editáveis) */}
           <div className="pt-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Taxa por Item (escalonada)</p>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="space-y-1">
-                <label className="text-[10px] text-muted-foreground">Até R$</label>
-                <input type="number" value={itemFee.threshold}
-                  onChange={e => setItemFee(prev => ({ ...prev, threshold: parseFloat(e.target.value) || 0 }))}
-                  className="w-full h-7 px-1.5 rounded-md bg-secondary border border-border text-xs font-mono-nums focus:outline-none focus:ring-1 focus:ring-ring" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] text-muted-foreground">Faixa baixa R$</label>
-                <input type="number" value={itemFee.low}
-                  onChange={e => setItemFee(prev => ({ ...prev, low: parseFloat(e.target.value) || 0 }))}
-                  className="w-full h-7 px-1.5 rounded-md bg-secondary border border-border text-xs font-mono-nums focus:outline-none focus:ring-1 focus:ring-ring" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] text-muted-foreground">Faixa alta R$</label>
-                <input type="number" value={itemFee.high}
-                  onChange={e => setItemFee(prev => ({ ...prev, high: parseFloat(e.target.value) || 0 }))}
-                  className="w-full h-7 px-1.5 rounded-md bg-secondary border border-border text-xs font-mono-nums focus:outline-none focus:ring-1 focus:ring-ring" />
-              </div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Faixas de Comissão + Taxa por Item</p>
+            <div className="grid grid-cols-[auto_1fr_1fr_1fr] gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
+              <span />
+              <span className="text-center">Até R$</span>
+              <span className="text-center">Comissão %</span>
+              <span className="text-center">Taxa item R$</span>
             </div>
+            {tiers.map((t, i) => (
+              <div key={i} className="grid grid-cols-[auto_1fr_1fr_1fr] gap-x-2 gap-y-1 items-center mt-1">
+                <span className="text-[10px] text-muted-foreground">#{i + 1}</span>
+                <input
+                  type="number" value={t.threshold === Infinity ? '' : t.threshold}
+                  placeholder="∞"
+                  onChange={e => setTiers(prev => prev.map((x, j) => j === i ? { ...x, threshold: e.target.value === '' ? Infinity : (parseFloat(e.target.value) || 0) } : x))}
+                  className="w-full h-7 px-1.5 rounded-md bg-secondary border border-border text-xs font-mono-nums text-right focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                <input
+                  type="number" step="0.1" value={t.comissao}
+                  onChange={e => setTiers(prev => prev.map((x, j) => j === i ? { ...x, comissao: parseFloat(e.target.value) || 0 } : x))}
+                  className="w-full h-7 px-1.5 rounded-md bg-secondary border border-border text-xs font-mono-nums text-right focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                <input
+                  type="number" step="0.1" value={t.itemFee}
+                  onChange={e => setTiers(prev => prev.map((x, j) => j === i ? { ...x, itemFee: parseFloat(e.target.value) || 0 } : x))}
+                  className="w-full h-7 px-1.5 rounded-md bg-secondary border border-border text-xs font-mono-nums text-right focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>
@@ -383,7 +418,7 @@ export function PrecificacaoCalc({ products }: Props) {
                   <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                   <p className="text-xs">
                     Você está na <b>faixa alta</b> de taxa por item ({brl(calc.itemFeeApplied)} = {pctItemShare.toFixed(0)}% do preço).
-                    Dividir em 2 anúncios abaixo de {brl(itemFee.threshold)} pode reduzir para {brl(itemFee.low)} cada.
+                    Dividir em 2 anúncios abaixo de {brl(80)} pode reduzir para {brl(4)} cada.
                   </p>
                 </div>
               )}
