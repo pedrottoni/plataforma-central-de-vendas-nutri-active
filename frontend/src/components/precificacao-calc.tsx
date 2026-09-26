@@ -73,7 +73,10 @@ export function PrecificacaoCalc({ products }: Props) {
   const [amp, setAmp] = useState(false) // Acréscimo por Método de Pagamento (parcelado)
   const [cupomPct, setCupomPct] = useState<string>('') // promoção aplicada na plataforma
   const [freteComprador, setFreteComprador] = useState<string>('') // frete pago pelo comprador (R$)
-  const [targetMargin, setTargetMargin] = useState<string>('30') // margem líquida desejada % (solver reverso)
+  // ── Solver reverso: preço-alvo por margem % OU lucro R$ desejado ──
+  const [solverMode, setSolverMode] = useState<'margem' | 'lucro'>('margem')
+  const [targetMargin, setTargetMargin] = useState<string>('30') // margem líquida desejada %
+  const [targetLucro, setTargetLucro] = useState<string>('') // lucro desejado por unidade R$
 
   const pixPct = 5 // desconto PIX padrão (editável via toggle on/off)
   const ampPct = 2 // AMP estimado sobre preço quando parcelado
@@ -144,14 +147,24 @@ export function PrecificacaoCalc({ products }: Props) {
   const inHighTier = calc.valid && priceNum > 79.99
   const pctItemShare = calc.valid && priceNum > 0 ? (calc.itemFeeApplied / priceNum) * 100 : 0
 
-  // ── Solver reverso: preço-alvo dada uma margem líquida desejada ──
+  // ── Solver reverso: preço-alvo por margem % OU lucro R$ desejado ──
   // renda = P·s·k − F,  onde s=(1−cupom), k=(1+PIX−AMP−Σtaxas), F=taxa_item
   // margem m → renda = custo/(1−m)  →  P = (custo/(1−m) + F) / k
+  // lucro L → renda = custo + L     →  P = (custo + L + F) / k
   // F é escalonado (faixa baixa/alta) → testamos consistência de tier.
   const solver = useMemo(() => {
     const costNum = parseFloat(cost) || 0
     const m = (parseFloat(targetMargin) || 0) / 100
-    if (costNum <= 0 || m < 0 || m >= 1) return null
+    if (costNum <= 0) return null
+    // renda líquida necessária (denominador-alvo do solver)
+    let rendaAlvo: number
+    if (solverMode === 'lucro') {
+      const L = parseFloat(targetLucro) || 0
+      rendaAlvo = costNum + L
+    } else {
+      if (m < 0 || m >= 1) return null
+      rendaAlvo = costNum / (1 - m)
+    }
     const s = 1 - ((parseFloat(cupomPct) || 0) / 100)
     const pctSum = fees.reduce((acc, f) => acc + f.value / 100, 0)
     const pixEff = pix ? pixPct / 100 : 0
@@ -160,12 +173,12 @@ export function PrecificacaoCalc({ products }: Props) {
     if (kBase <= 0) return { infeasible: true as const }
     // Para cada faixa, comissão c e taxa-item F: renda = P·s·(kBase) − P·s·c − F
     //   = P·s·(kBase − c) − F. Margem m → renda = custo/(1−m).
-    //   P = (custo/(1−m) + F) / (s·(kBase − c))
+    //   P = (rendaAlvo + F) / (s·(kBase − c))
     let chosen: { P: number; PL: number; F: number; tier: string; comissao: number } | null = null
     for (const t of tiers) {
       const denom = s * (kBase - t.comissao / 100)
       if (denom <= 0) continue
-      const P = (costNum / (1 - m) + t.itemFee) / denom
+      const P = (rendaAlvo + t.itemFee) / denom
       const PL = P * s
       if (PL <= t.threshold) { chosen = { P, PL, F: t.itemFee, tier: `até ${t.threshold === Infinity ? '∞' : brl(t.threshold)}`, comissao: t.comissao }; break }
     }
@@ -173,14 +186,14 @@ export function PrecificacaoCalc({ products }: Props) {
       const last = tiers[tiers.length - 1]
       const denom = s * (kBase - last.comissao / 100)
       if (denom <= 0) return { infeasible: true as const }
-      const P = (costNum / (1 - m) + last.itemFee) / denom
+      const P = (rendaAlvo + last.itemFee) / denom
       chosen = { P, PL: P * s, F: last.itemFee, tier: 'alta (aprox.)', comissao: last.comissao }
     }
     const renda = chosen.PL * (kBase - chosen.comissao / 100) - chosen.F
     const lucro = renda - costNum
     const margemReal = renda > 0 ? (lucro / renda) * 100 : 0
     return { infeasible: false as const, price: chosen.P, tier: chosen.tier, lucro, margemReal }
-  }, [cost, targetMargin, cupomPct, fees, tiers, pix, amp, pixPct, ampPct])
+  }, [cost, solverMode, targetMargin, targetLucro, cupomPct, fees, tiers, pix, amp, pixPct, ampPct])
 
   return (
     <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
@@ -370,48 +383,6 @@ export function PrecificacaoCalc({ products }: Props) {
                 </div>
               </div>
 
-              {/* Solver reverso: preço-alvo por margem */}
-              <div className="p-3 rounded-lg bg-secondary/50 border border-border space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Preço-alvo por Margem</p>
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="number" value={targetMargin}
-                      onChange={e => setTargetMargin(e.target.value)}
-                      className="w-14 h-7 px-1.5 rounded-md bg-background border border-border text-xs font-mono-nums text-right focus:outline-none focus:ring-1 focus:ring-ring"
-                    />
-                    <span className="text-[10px] text-muted-foreground">%</span>
-                  </div>
-                </div>
-                {solver === null ? (
-                  <p className="text-[11px] text-muted-foreground">Informe o custo do fornecedor para calcular o preço ideal.</p>
-                ) : solver.infeasible ? (
-                  <p className="text-[11px] text-destructive">Taxas muito altas — não há preço viável com essa margem.</p>
-                ) : (
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Preço sugerido</span>
-                      <span className="text-sm font-bold font-mono-nums text-accent">{brl(solver.price)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Faixa de taxa por item</span>
-                      <span className="text-xs font-mono-nums">{solver.tier}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Lucro estimado</span>
-                      <span className="text-xs font-mono-nums text-success">{brl(solver.lucro)}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setPrice(solver.price.toFixed(2))}
-                      className="w-full mt-1 text-[11px] py-1.5 rounded-md border border-border bg-background hover:bg-secondary/60 transition-colors"
-                    >
-                      Usar este preço no simulador →
-                    </button>
-                  </div>
-                )}
-              </div>
-
               {/* Alertas */}
               {inHighTier && (
                 <div className="flex items-start gap-2 p-3 rounded-lg bg-warning/10 border border-warning/40 text-warning">
@@ -424,6 +395,78 @@ export function PrecificacaoCalc({ products }: Props) {
               )}
             </>
           )}
+
+          {/* Solver reverso: preço-alvo */}
+          <div className="p-3 rounded-lg bg-secondary/50 border border-border space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Preço Alvo</p>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number" value={targetMargin}
+                  onChange={e => { setSolverMode('margem'); setTargetMargin(e.target.value) }}
+                  onFocus={() => setSolverMode('margem')}
+                  placeholder="30"
+                  className={`w-16 h-7 px-1.5 rounded-md border text-xs font-mono-nums text-right focus:outline-none focus:ring-1 focus:ring-ring transition-colors ${
+                    solverMode === 'margem'
+                      ? 'bg-background border-border text-foreground'
+                      : 'bg-secondary/40 border-border/50 text-muted-foreground/60'
+                  }`}
+                />
+                <span className={`text-[10px] ${solverMode === 'margem' ? 'text-muted-foreground' : 'text-muted-foreground/50'}`}>%</span>
+                <span className="text-[10px] text-muted-foreground/40 mx-0.5">/</span>
+                <input
+                  type="number" step="0.01" value={targetLucro}
+                  onChange={e => { setSolverMode('lucro'); setTargetLucro(e.target.value) }}
+                  onFocus={() => setSolverMode('lucro')}
+                  placeholder="5,00"
+                  className={`w-16 h-7 px-1.5 rounded-md border text-xs font-mono-nums text-right focus:outline-none focus:ring-1 focus:ring-ring transition-colors ${
+                    solverMode === 'lucro'
+                      ? 'bg-background border-border text-foreground'
+                      : 'bg-secondary/40 border-border/50 text-muted-foreground/60'
+                  }`}
+                />
+                <span className={`text-[10px] ${solverMode === 'lucro' ? 'text-muted-foreground' : 'text-muted-foreground/50'}`}>R$</span>
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              Margem líquida % <b>ou</b> lucro desejado por unidade (R$). Digite em um dos dois campos — o outro desativa.
+            </p>
+            {solver === null ? (
+              <p className="text-[11px] text-muted-foreground">
+                {solverMode === 'lucro'
+                  ? 'Informe o custo do fornecedor e o lucro desejado.'
+                  : 'Informe o custo do fornecedor para calcular o preço ideal.'}
+              </p>
+            ) : solver.infeasible ? (
+              <p className="text-[11px] text-destructive">Taxas muito altas — não há preço viável com esse objetivo.</p>
+            ) : (
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Preço sugerido</span>
+                  <span className="text-sm font-bold font-mono-nums text-accent">{brl(solver.price)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Faixa de taxa por item</span>
+                  <span className="text-xs font-mono-nums">{solver.tier}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Lucro estimado</span>
+                  <span className="text-xs font-mono-nums text-success">{brl(solver.lucro)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Margem líquida</span>
+                  <span className="text-xs font-mono-nums text-success">{solver.margemReal.toFixed(1)}%</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPrice(solver.price.toFixed(2))}
+                  className="w-full mt-1 text-[11px] py-1.5 rounded-md border border-border bg-background hover:bg-secondary/60 transition-colors"
+                >
+                  Usar este preço no simulador →
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* Como usar */}
           <div className="flex items-start gap-2 p-3 rounded-lg bg-secondary/30 border border-border">
